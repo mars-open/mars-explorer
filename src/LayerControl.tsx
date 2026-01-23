@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import maplibregl, { ControlPosition, Map } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
@@ -10,7 +10,7 @@ interface Layer {
 }
 
 interface LayerControlProps {
-  layers: Layer[]; // e.g., [{ id: 'my-layer-1', name: 'Layer 1' }]
+  layers: Layer[];
   position?: ControlPosition;
 }
 
@@ -88,19 +88,33 @@ function LayerControlWrapper({layers, mapRef}: LayerControlContentProps) {
 }
 
 export function LayerControl(props: LayerControlProps) {
-
+  const rootRef = useRef<ReturnType<typeof createRoot> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapContextRef = useRef<any>(null);
+  
   useControl((mapContext) => {
+      mapContextRef.current = mapContext;
       const container = document.createElement('div');
+      containerRef.current = container;
       container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-      const root = createRoot(container);
-      root.render(<LayerControlWrapper layers={props.layers} mapRef={mapContext} />);      
+      rootRef.current = createRoot(container);
+      rootRef.current.render(<LayerControlWrapper layers={props.layers} mapRef={mapContext} />);      
       return { 
         onAdd: () => container, 
-        onRemove: () => {container.remove();}
+        onRemove: () => {
+          containerRef.current?.remove();
+        }
       };
     }, {
       position: props.position
     }
   );
+
+  useEffect(() => {
+    if (rootRef.current && containerRef.current?.parentElement && mapContextRef.current) {
+      rootRef.current.render(<LayerControlWrapper layers={props.layers} mapRef={mapContextRef.current} />);
+    }
+  }, [props.layers]);
+
   return null;
 };
