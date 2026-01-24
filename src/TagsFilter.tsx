@@ -25,7 +25,6 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
   }, [possibleTags]);
 
   function toggleTag(tag: string) {
-    console.log(map);
     if (!map) return;
     
     const newSelectedTags = { ...selectedTags, [tag]: !selectedTags[tag] };
@@ -112,8 +111,14 @@ function TagsFilterControl({ layerIds, possibleTags, position }: TagsFilterProps
     const container = document.createElement('div');
     containerRef.current = container;
     container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-    rootRef.current = createRoot(container);
-    rootRef.current.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map?.getMap()!} />);
+    const root = createRoot(container);
+    rootRef.current = root;
+    
+    // Defer initial render to avoid React warning
+    setTimeout(() => {
+      if (map) root.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map.getMap()} />);
+    }, 0);
+    
     return { 
       onAdd: () => container, 
       onRemove: () => {
