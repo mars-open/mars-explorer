@@ -10,6 +10,7 @@ import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
 import * as pmtiles from "pmtiles";
 import * as flatgeobuf from "flatgeobuf";
+import { simplify } from "@turf/simplify";
 
 // constants
 const ppsZoomLevels = [15, 18, 21].sort((a,b) => b - a).reverse();
@@ -25,6 +26,17 @@ function App() {
   const mapRef = useRef<MapRef>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
 
+  // Helper function to get feature identifier for setFeatureState/removeFeatureState
+  const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: any) => {
+    if (!layerId) return null;
+    const layer = map.getLayer(layerId)!;
+    const sourceId = layer.source as string;
+    const source = map.getSource(sourceId);
+    // Vector tile sources need sourceLayer, GeoJSON sources don't
+    const sourceLayer = source?.type === 'vector' ? (layer as any).sourceLayer : undefined;    
+    return { source: sourceId, sourceLayer, id: featureId };
+  };
+
   // Update feature state when selection changes
   useEffect(() => {
     if (!mapRef.current) return;
@@ -32,36 +44,18 @@ function App() {
 
     // Set selected state for new selections
     selectedFeatures.forEach(sf => {
-      const layerId = sf.feature.layer?.id;
-      let sourceId = layerId;
-      let sourceLayer = undefined;
-
-      if (layerId === 'pps') {
-        sourceId = 'pps';
-        sourceLayer = 'pps';
-      } else if (layerId === 'edges') {
-        sourceId = 'edges-fgb';
-      } else if (layerId === 'nodes') {
-        sourceId = 'nodes-fgb';
-      }
-
-      if (sourceId) {
-        map.setFeatureState(
-          { source: sourceId, sourceLayer, id: sf.feature.id },
-          { selected: true }
-        );
+      const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id);
+      if (identifier) {
+        map.setFeatureState(identifier, { selected: true });
       }
     });
 
     // Cleanup: remove feature state when component unmounts or selection changes
     return () => {
       selectedFeatures.forEach(sf => {
-        const layerId = sf.feature.layer?.id;
-        let sourceId = map.getLayer(layerId)?.source;
-        if (sourceId && map.getSource(sourceId)) {
-          map.removeFeatureState(
-            { source: sourceId, sourceLayer: layerId, id: sf.feature.id }
-          );
+        const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id);
+        if (identifier) {
+          map.removeFeatureState(identifier);
         }
       });
     };
@@ -74,26 +68,21 @@ function App() {
 
     // Clear previous expanded feature state
     if (prevExpandedFeatureRef.current) {
-      const prevFeature = prevExpandedFeatureRef.current;
-      const layerId = prevFeature.feature.layer?.id;
-      let sourceId = map.getLayer(layerId)?.source;
-      if (sourceId && map.getSource(sourceId)) {
-        map.setFeatureState(
-          { source: sourceId, sourceLayer: layerId, id: prevFeature.feature.id },
-          { expanded: false }
-        );
+      const identifier = getFeatureIdentifier(
+        map, 
+        prevExpandedFeatureRef.current.feature.layer?.id, 
+        prevExpandedFeatureRef.current.feature.id
+      );
+      if (identifier) {
+        map.setFeatureState(identifier, { expanded: false });
       }
     }
 
     // Set expanded state for the currently expanded feature
     if (expandedFeature) {
-      const layerId = expandedFeature.feature.layer?.id;
-      let sourceId = map.getLayer(layerId)?.source;
-      if (sourceId && map.getSource(sourceId)) {
-        map.setFeatureState(
-          { source: sourceId, sourceLayer: layerId, id: expandedFeature.feature.id },
-          { expanded: true }
-        );
+      const identifier = getFeatureIdentifier(map, expandedFeature.feature.layer?.id, expandedFeature.feature.id);
+      if (identifier) {
+        map.setFeatureState(identifier, { expanded: true });
       }
     }
 
@@ -102,8 +91,10 @@ function App() {
   }, [expandedFeature]);
 
   // traffimage or swisstopo... 
-  const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
+  //const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
   //const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
+  const mapStyle = "lightbasemap_v1190_reduced.json"
+  // Editor: https://maplibre.org/maputnik
 
   async function loadFlatGeobufGeoJSON(url: string) {
     const response = await fetch(url);
@@ -203,21 +194,64 @@ function App() {
       loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/edges.fgb')
         .then(geojson => {
           const normalized = normalizeGeoJSON(geojson);
-          map.addSource('edges-fgb', {type: 'geojson', data: normalized, promoteId: 'uuid_edge'});
-          map.addLayer({id: 'edges', type: 'line', source: 'edges-fgb', minzoom: 10, paint: {
-            "line-color": [
-              "case",
-              ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-              ["boolean", ["feature-state", "selected"], false], "#ff8800",
-              "#0000f0ff"
-            ],
-            "line-width": [
-              "case",
-              ["boolean", ["feature-state", "expanded"], false], 2,
-              ["boolean", ["feature-state", "selected"], false], 2,
-              1
-            ]
-          }}, "pps");
+          
+          // Create multiple simplified versions for high zoom level
+          const edgesZoom7 = simplify({
+            type: 'FeatureCollection' as const,
+            features: normalized.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm"))
+          }, {tolerance: 0.005, highQuality: false});
+          const edgesZoomDetail = normalized; // No simplification at high zoom
+          
+          map.addSource('edges-fgb', {type: 'geojson', data: (edgesZoomDetail), promoteId: 'uuid_edge'});
+          map.addLayer({id: 'edges', type: 'line', source: 'edges-fgb', minzoom: 10, 
+            paint: {
+              "line-color": [
+                "case",
+                ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+                ["boolean", ["feature-state", "selected"], false], "#ff8800",
+                "#0000f0ff"
+              ],
+              "line-width": [
+                "case",
+                ["boolean", ["feature-state", "expanded"], false], 2,
+                ["boolean", ["feature-state", "selected"], false], 2,
+                1
+              ],
+            }         
+          }, "pps");
+
+          map.addSource('edges-reduced', {type: 'geojson', data: (edgesZoom7), promoteId: 'uuid_edge'});
+          map.addLayer({id: 'edges-reduced', type: 'line', source: 'edges-reduced', maxzoom: 10, 
+            paint: {
+              "line-color": "rgb(100, 100, 100)",
+              "line-width": 1,
+              "line-blur": 0.5,
+              "line-opacity": 0.7
+            }         
+          });
+
+        
+          // Update edge geometries only when crossing zoom thresholds
+          let currentEdgeVersion: 'zoom7' | 'zoomDetail' = map.getZoom() < 9 ? 'zoom7' : 'zoomDetail';
+          map.on('zoomend', () => {
+            const zoom = map.getZoom();
+            const source = map.getSource('edges-fgb') as maplibregl.GeoJSONSource;
+            if (source) {
+              let newVersion: 'zoom7' | 'zoomDetail';
+              if (zoom < 9) {
+                newVersion = 'zoom7';
+              } else {
+                newVersion = 'zoomDetail';
+              }
+              
+              // Only update if version changed
+              if (newVersion !== currentEdgeVersion) {
+                currentEdgeVersion = newVersion;
+                const data = newVersion === 'zoom7' ? edgesZoom7 : edgesZoomDetail;
+                source.setData(data);
+              }
+            }
+          });
         })
         .catch(error => console.error("Error loading edges:", error));
 

@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@turf/simplify": "^7.3.2",
     "flatgeobuf": "^4.4.0",
     "maplibre-gl": "^5.0.0",
     "pmtiles": "^4.3.2",
