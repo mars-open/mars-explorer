@@ -409,98 +409,6 @@
       }
     },
     {
-      "id": "water_line_intermittent",
-      "type": "line",
-      "source": "base_v1.0.0",
-      "source-layer": "waterway",
-      "minzoom": 12,
-      "filter": ["all", ["==", "intermittent", 1]],
-      "layout": {"visibility": "visible"},
-      "paint": {
-        "line-blur": 0,
-        "line-color": "rgba(48, 48, 48, 1)",
-        "line-width": [
-          "interpolate",
-          ["exponential", 1.5],
-          ["zoom"],
-          13,
-          [
-            "match",
-            ["to-string", ["get", "width"]],
-            ["10", "9", "8"],
-            3.5,
-            ["7", "6", "5"],
-            2.5,
-            ["4", "3"],
-            1.5,
-            ["1", "2"],
-            1,
-            ["match", ["get", "class"], ["river", "canal"], 3.5, 1]
-          ],
-          16,
-          [
-            "match",
-            ["to-string", ["get", "width"]],
-            "10",
-            5,
-            "9",
-            4.5,
-            "8",
-            4,
-            "7",
-            3.5,
-            ["6", "5"],
-            3,
-            "4",
-            2.5,
-            "3",
-            2,
-            "2",
-            1.5,
-            "1",
-            1,
-            ["match", ["get", "class"], ["river", "canal"], 5, 1.5]
-          ],
-          20,
-          [
-            "match",
-            ["to-string", ["get", "width"]],
-            "10",
-            10,
-            "9",
-            9.6,
-            "8",
-            8.9,
-            "7",
-            8.2,
-            "6",
-            7.5,
-            "5",
-            6.8,
-            "4",
-            6.1,
-            "3",
-            5.4,
-            "2",
-            4.7,
-            "1",
-            4,
-            ["match", ["get", "class"], ["river", "canal"], 10, 4]
-          ]
-        ],
-        "line-offset": 0,
-        "line-opacity": {"stops": [[13, 0.25], [16, 0.35]]},
-        "line-dasharray": {
-          "stops": [
-            [13, [0.5, 3]],
-            [14, [0.75, 4.5]],
-            [15, [1, 6]],
-            [16, [1.25, 7.5]]
-          ]
-        }
-      }
-    },
-    {
       "id": "water_line",
       "type": "line",
       "source": "base_v1.0.0",
@@ -630,34 +538,6 @@
           10,
           "rgb(199, 224, 245)"
         ]
-      }
-    },
-    {
-      "id": "hachure",
-      "type": "fill",
-      "source": "relief_v1.0.0",
-      "source-layer": "hachure",
-      "layout": {"visibility": "visible"},
-      "paint": {
-        "fill-color": [
-          "match",
-          ["get", "class"],
-          1,
-          "rgba(32, 32, 32, 1)",
-          "hsl(203, 60%, 46%)"
-        ],
-        "fill-opacity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          9,
-          0,
-          11,
-          0.2,
-          14,
-          0.25
-        ],
-        "fill-antialias": false
       }
     },
     {
@@ -897,7 +777,7 @@
       "type": "line",
       "source": "base_v1.0.0",
       "source-layer": "transportation",
-      "minzoom": 7,
+      "minzoom": 10,
       "filter": [
         "all",
         ["==", "brunnel", "tunnel"],
@@ -1031,7 +911,7 @@
       "type": "line",
       "source": "base_v1.0.0",
       "source-layer": "transportation",
-      "minzoom": 6,
+      "minzoom": 10,
       "filter": [
         "all",
         ["==", "brunnel", "tunnel"],
@@ -1182,94 +1062,6 @@
         ],
         "line-width": {"stops": [[13, 0], [16, 2], [18, 3]]},
         "line-opacity": ["match", ["get", "class"], "weir", 0.2, 1]
-      }
-    },
-    {
-      "id": "road_path_footway_ferry",
-      "type": "line",
-      "metadata": {
-        "maputnik:comment": "cannot be in the same layer as road_casings because dasharray doesn't support expressions"
-      },
-      "source": "base_v1.0.0",
-      "source-layer": "transportation",
-      "minzoom": 11,
-      "filter": [
-        "all",
-        [
-          "match",
-          ["get", "class"],
-          [
-            "footway",
-            "footway_construction",
-            "path",
-            "path_construction",
-            "ferry",
-            "car_ferry"
-          ],
-          true,
-          false
-        ],
-        [
-          "match",
-          ["get", "brunnel"],
-          ["bridge", "tunnel"],
-          ["match", ["get", "subclass"], "covered_bridge", true, false],
-          true
-        ]
-      ],
-      "layout": {
-        "line-cap": "butt",
-        "line-join": "bevel",
-        "visibility": "visible"
-      },
-      "paint": {
-        "line-blur": ["interpolate", ["linear"], ["zoom"], 15, 0.1, 20, 0.4],
-        "line-color": [
-          "match",
-          ["get", "class"],
-          ["ferry", "car_ferry"],
-          "rgba(105, 187, 218, 1)",
-          "rgba(115, 115, 115, 1)"
-        ],
-        "line-width": [
-          "interpolate",
-          ["exponential", 1.5],
-          ["zoom"],
-          13,
-          0.5,
-          15,
-          1.1,
-          20,
-          3
-        ],
-        "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          11,
-          ["match", ["get", "is_route"], 11, 0.5, 0],
-          12,
-          [
-            "match",
-            ["get", "is_route"],
-            11,
-            ["match", ["get", "class"], ["path", "track", "footway"], 0.5, 0],
-            0
-          ],
-          14,
-          1
-        ],
-        "line-dasharray": [
-          "step",
-          ["zoom"],
-          ["literal", [6, 2]],
-          16,
-          ["literal", [9, 3]],
-          17,
-          ["literal", [12, 4]],
-          18,
-          ["literal", [15, 5]]
-        ]
       }
     },
     {

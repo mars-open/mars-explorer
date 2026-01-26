@@ -2,6 +2,8 @@
 
 A web-based visualization tool for exploring positionpoint data on railway infrastructure. Built for maintenance applications, MARS Explorer provides an interactive map interface to visualize, filter, and analyze geospatial data.
 
+Explore Positionpoints of Switzerland on https://mars-open.github.io/mars-explorer/. They have been created from [Swisstopo TLM3d](https://www.swisstopo.admin.ch/de/landschaftsmodell-swisstlm3d) open-data. To create Positionpoints for other topology data, contact us.
+
 ## Features
 
 - 🗺️ **Interactive Map Visualization** - Built with MapLibre GL for smooth, high-performance rendering

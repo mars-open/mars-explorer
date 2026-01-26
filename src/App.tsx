@@ -1,4 +1,4 @@
-import { Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
+import { AttributionControl, Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +15,13 @@ import { simplify } from "@turf/simplify";
 // constants
 const ppsZoomLevels = [15, 18, 21].sort((a,b) => b - a).reverse();
 const ppsZoomLevelMin = Math.min(...ppsZoomLevels);
+
+const collapseAttributionControl = (map: maplibregl.Map) => {
+  const container = map.getContainer().querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
+  if (!container || !container.classList.contains("maplibregl-compact")) return;
+  container.classList.remove("maplibregl-compact-show");
+  container.removeAttribute("open");
+};
 
 
 function App() {
@@ -91,7 +98,7 @@ function App() {
     prevExpandedFeatureRef.current = expandedFeature;
   }, [expandedFeature]);
 
-  // traffimage or swisstopo... 
+  // traffimage, swisstopo or custom... 
   //const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
   //const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
   const mapStyle = "lightbasemap_v1190_reduced.json"
@@ -154,6 +161,8 @@ function App() {
 
     if (map) {
 
+      collapseAttributionControl(map);
+
       // terrain source (always add source, but terrain/hillshade controlled by state)
       map.addSource('pmt-3d', {
         type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'
@@ -189,7 +198,7 @@ function App() {
           const edgesZoom7 = simplify({
             type: 'FeatureCollection' as const,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            features: geojson.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm"))
+            features: geojson.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm") && !f.properties?.tags?.includes("Tram") && !f.properties?.tags?.includes("standseilbahn"))
           }, {tolerance: 0.005, highQuality: false});
           const edgesZoomDetail = geojson; // No simplification at high zoom
           
@@ -219,30 +228,7 @@ function App() {
               "line-blur": 0.5,
               "line-opacity": 0.7
             }         
-          });
-
-        
-          // Update edge geometries only when crossing zoom thresholds
-          let currentEdgeVersion: 'zoom7' | 'zoomDetail' = map.getZoom() < 9 ? 'zoom7' : 'zoomDetail';
-          map.on('zoomend', () => {
-            const zoom = map.getZoom();
-            const source = map.getSource('edges-fgb') as maplibregl.GeoJSONSource;
-            if (source) {
-              let newVersion: 'zoom7' | 'zoomDetail';
-              if (zoom < 9) {
-                newVersion = 'zoom7';
-              } else {
-                newVersion = 'zoomDetail';
-              }
-              
-              // Only update if version changed
-              if (newVersion !== currentEdgeVersion) {
-                currentEdgeVersion = newVersion;
-                const data = newVersion === 'zoom7' ? edgesZoom7 : edgesZoomDetail;
-                source.setData(data);
-              }
-            }
-          });
+          });        
         })
         .catch(error => console.error("Error loading edges:", error));
 
@@ -339,8 +325,9 @@ function App() {
               {id: "nodes", name: "Tlm3d Knoten"},
             ]}
           />
-          <TagsFilter layerIds={["pps", "edges", "nodes"]} possibleTags={['Normalspur', 'Schmalspur']} position="top-right"/>
+          <TagsFilter layerIds={["pps", "edges", "nodes"]} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>
           <CoordinatesDisplay />
+          <AttributionControl position="top-right" compact={true} />
         </Map>
       </main>
     </>
