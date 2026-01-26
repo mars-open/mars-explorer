@@ -18,50 +18,90 @@ interface TagsFilterContentProps {
 }
 
 function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps) {
-  const [selectedTags, setSelectedTags] = useState<Record<string, boolean>>({});
+  const [tagConfig, setTagConfig] = useState<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>({});
 
+  // initialize
   useEffect(() => {
-    possibleTags.forEach(tag => setSelectedTags(prev => ({ ...prev, [tag]: true })));
+    setTagConfig(prev => {
+      const next = { ...prev };
+      possibleTags.forEach(tag => {
+        if (!next[tag]) {
+          next[tag] = { selected: true, mode: 'include' };
+        }
+      });
+      return next;
+    });
   }, [possibleTags]);
 
   function toggleTag(tag: string) {
     if (!map) return;
-    
-    const newSelectedTags = { ...selectedTags, [tag]: !selectedTags[tag] };
-    setSelectedTags(newSelectedTags);
+    setTagConfig(prev => ({
+      ...prev, [tag]: {...(prev[tag]), selected: !(prev[tag]?.selected ?? false)}
+    }));
+  }
 
-    // Get array of selected tags
-    const selectedTagsArray = Object.entries(newSelectedTags)
-      .filter(([, selected]) => selected)
+  function toggleMode(tag: string) {
+    setTagConfig(prev => ({
+      ...prev, [tag]: {...(prev[tag]), mode: prev[tag]?.mode === 'include' ? 'exclude' : 'include'}
+    }));
+  }
+
+  useEffect(() => {
+    if (!map) return;
+    
+    const includedTags = Object.entries(tagConfig)
+      .filter(([, config]) => config.selected && config.mode === 'include')
+      .map(([t]) => t);
+
+    const excludedTags = Object.entries(tagConfig)
+      .filter(([, config]) => config.selected && config.mode === 'exclude')
       .map(([t]) => t);
 
     // Apply filter to all layers
     layerIds.forEach(layerId => {
-      if (selectedTagsArray.length === 0) {
+      if (includedTags.length === 0) {
         // Show all if no tags selected
         map.setFilter(layerId, null);
       } else {
         // Filter features where tags array contains any of the selected tags
-        const filters = selectedTagsArray.map(tag => ['in', tag, ['get', 'tags']]);
+        const includeFilters = includedTags.map(tag => ['in', tag, ['get', 'tags']])
+        const excludeFilters = excludedTags.map(tag => ['!', ['in', tag, ['get', 'tags']]]);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const filterExpression: any = ['any', ...filters];
+        const filterExpression: any = ['all', ['any', ...includeFilters], ['all', ...excludeFilters]];
         map.setFilter(layerId, filterExpression);
       }
     });
 
-    console.log(`Tags filter updated: ${selectedTagsArray.join(', ')}`);
-  }
+    console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`);
+  }, [tagConfig]);
 
   return (
-    <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
-      {possibleTags.map(tag => (
-        <label key={tag} className="flex items-center cursor-pointer mb-1 block">
-          <input type="checkbox" checked={selectedTags[tag] || false}
-                 onChange={() => toggleTag(tag)} className="mr-2" />
-          {tag}
-        </label>
-      ))}
-    </div>
+      <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
+        {possibleTags.map(tag => (
+          <div key={tag} className="items-center cursor-pointer mb-1" 
+            style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 6 }}
+          >
+            <label className="items-center" htmlFor={`tag-${tag}`} 
+                style={{ flex: 1, minWidth: 0, height: 22, display: 'flex', alignItems: 'center' }}>
+                <input
+                  id={`tag-${tag}`} type="checkbox"
+                  checked={tagConfig[tag]?.selected || false}
+                  onChange={() => toggleTag(tag)}
+                  className="tags-filter-checkbox"
+                  data-mode={tagConfig[tag]?.mode}
+                  style={{ marginRight: 8 }}
+                />
+              {tag}
+            </label>
+            <button type="button" className="maplibregl-ctrl-icon" title="Toggle include/exclude"
+              style={{ height: 22, width: 22, lineHeight: '26px', fontSize: '0.75rem' }}
+              onClick={() => toggleMode(tag)}
+            >
+              {tagConfig[tag]?.mode === 'exclude' ? '−' : '+'}
+            </button>
+          </div>
+        ))}
+      </div>
   );
 }
 

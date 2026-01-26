@@ -21,3 +21,57 @@ h1 {
   padding: 8px;
   background-color: rgba(255, 255, 255, 0.5);
 }
+.tags-filter-checkbox {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border: 1px solid #a3a7b0;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.tags-filter-checkbox:focus-visible {
+  outline: 2px auto #3070ff;
+  outline-offset: 2px;
+}
+
+.tags-filter-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 40%;
+  left: calc(50%);
+  width: 2px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.tags-filter-checkbox:checked {
+  background-color: #0b5fff;
+  border-color: #0b5fff;
+}
+
+.tags-filter-checkbox[data-mode="exclude"]:checked {
+  background-color: #ff3b30;
+  border-color: #ff3b30;
+}
+
+.tags-filter-checkbox[data-mode="exclude"]:checked::after {
+  border: none;
+  top: 50%;
+  left: calc(50%);
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  background-image:
+    linear-gradient(45deg, transparent 40%, white 40%, white 60%, transparent 60%),
+    linear-gradient(-45deg, transparent 40%, white 40%, white 60%, transparent 60%);
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}

@@ -55,20 +55,38 @@ function LayerControlContent({layers, map}: LayerControlContentProps) {
 
   return (
 
-      <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
+    <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
       {layers.map(layer => (
-        <label key={layer.id} className="flex items-center cursor-pointer mb-1 block">
-          <input type="checkbox" checked={layerStates[layer.id] || false}
-                 onChange={() => toggleLayer(layer.id)} className="mr-2" />
-          {layer.name}
-        </label>
+        <div key={layer.id} className="items-center cursor-pointer mb-1" 
+          style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 6 }}
+        >
+          <label key={layer.id} className="flex items-center cursor-pointer mb-1 block" 
+            style={{ flex: 1, display: 'flex', height: 22, alignItems: 'center', lineHeight: '26px'}}>
+            <input
+              id={`layer-${layer.id}`} type="checkbox"
+              checked={layerStates[layer.id] || false}
+              onChange={() => toggleLayer(layer.id)}
+              className="tags-filter-checkbox"
+              style={{ marginRight: 8 }}
+            />
+            {layer.name}
+          </label>
+        </div>
       ))}
-      <label key="terrain" className="flex items-center cursor-pointer mb-1 block">
-        <input type="checkbox" checked={terrainEnabled}
-                onChange={(e) => toogleTerrain(e.target.checked)} className="mr-2" />
-        Terrain
-      </label>
-      </div>
+      <div key="terrain" className="items-center cursor-pointer mb-1" 
+        style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 6 }}>
+        <label key="terrain" className="flex items-center cursor-pointer mb-1 block"
+          style={{ flex: 1, display: 'flex', height: 22, alignItems: 'center', lineHeight: '26px'}}>
+          <input
+            type="checkbox" checked={terrainEnabled}
+            onChange={(e) => toogleTerrain(e.target.checked)}
+            className="tags-filter-checkbox"
+            style={{ marginRight: 8 }}
+          />
+          Terrain
+        </label>
+      </div>      
+    </div>
   );
 }
 
