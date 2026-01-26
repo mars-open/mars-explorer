@@ -23,6 +23,26 @@ const collapseAttributionControl = (map: maplibregl.Map) => {
   container.removeAttribute("open");
 };
 
+const defaultViewState = {
+  latitude: 46.95061,
+  longitude: 7.43885,
+  zoom: 15,
+  pitch: 0,
+  bearing: 0
+};
+
+const parseHashViewState = () => {
+  const hash = window.location.hash.replace(/^#/, '');
+  if (!hash) return null;
+  const [lng, lat, zoom] = hash.split('/').map(Number);
+  if ([lng, lat, zoom].some(value => Number.isNaN(value))) return null;
+  return { latitude: lat, longitude: lng, zoom };
+};
+
+const formatHash = (lng: number, lat: number, zoom: number) => {
+  return `#${lng.toFixed(5)}/${lat.toFixed(5)}/${zoom.toFixed(2)}`;
+};
+
 
 function App() {
 
@@ -30,6 +50,7 @@ function App() {
   const [expandedFeature, setExpandedFeature] = useState<SelectedFeature | null>(null);
   const [hoveredFeature, setHoveredFeature] = useState<MapGeoJSONFeature|null>();
   const [boxSelectActive, setBoxSelectActive] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapRef>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
 
@@ -254,18 +275,44 @@ function App() {
           }});
         })
         .catch(error => console.error("Error loading nodes:", error));
+
+      setMapReady(true);
     }
   };
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    const updateHashFromMap = () => {
+      const center = map.getCenter();
+      const hash = formatHash(center.lng, center.lat, map.getZoom());
+      if (window.location.hash !== hash) {
+        window.history.replaceState(null, '', hash);
+      }
+    };
+
+    const onMoveEnd = () => updateHashFromMap();
+    const onHashChange = () => {
+      const hashView = parseHashViewState();
+      if (hashView) {
+        map.jumpTo({ center: [hashView.longitude, hashView.latitude], zoom: hashView.zoom });
+      }
+    };
+
+    map.on('moveend', onMoveEnd);
+    window.addEventListener('hashchange', onHashChange);
+    updateHashFromMap();
+  }, [mapReady]);
+
+  const initialViewState = parseHashViewState() ?? defaultViewState;
 
   return (
     <>
       <main>
         <Map
           ref={mapRef}
-          initialViewState = {{
-            latitude: 46.95061, longitude: 7.43885,  // Bern
-            zoom: 15, pitch: 0, bearing: 0
-          }}
+          initialViewState={initialViewState}
           mapStyle={mapStyle}
           minZoom={7}
           interactiveLayerIds={["pps","edges","nodes"]}
