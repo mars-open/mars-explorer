@@ -1,7 +1,7 @@
-import { Layer, Map, MapGeoJSONFeature, MapRef, NavigationControl, Popup, Source, useControl, ControlPosition, AttributionControl, IControl, LngLat, useMap } from "react-map-gl/maplibre";
+import { Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LayerControl } from "./LayerControl";
 import { TagsFilter } from "./TagsFilter";
 import { CoordinatesDisplay } from "./CoordinatesDisplay";
@@ -27,12 +27,13 @@ function App() {
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
 
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
-  const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: any) => {
+  const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: string | number) => {
     if (!layerId) return null;
     const layer = map.getLayer(layerId)!;
     const sourceId = layer.source as string;
     const source = map.getSource(sourceId);
     // Vector tile sources need sourceLayer, GeoJSON sources don't
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sourceLayer = source?.type === 'vector' ? (layer as any).sourceLayer : undefined;    
     return { source: sourceId, sourceLayer, id: featureId };
   };
@@ -44,7 +45,7 @@ function App() {
 
     // Set selected state for new selections
     selectedFeatures.forEach(sf => {
-      const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id);
+      const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id!);
       if (identifier) {
         map.setFeatureState(identifier, { selected: true });
       }
@@ -53,7 +54,7 @@ function App() {
     // Cleanup: remove feature state when component unmounts or selection changes
     return () => {
       selectedFeatures.forEach(sf => {
-        const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id);
+        const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id!);
         if (identifier) {
           map.removeFeatureState(identifier);
         }
@@ -71,7 +72,7 @@ function App() {
       const identifier = getFeatureIdentifier(
         map, 
         prevExpandedFeatureRef.current.feature.layer?.id, 
-        prevExpandedFeatureRef.current.feature.id
+        prevExpandedFeatureRef.current.feature.id!
       );
       if (identifier) {
         map.setFeatureState(identifier, { expanded: false });
@@ -80,7 +81,7 @@ function App() {
 
     // Set expanded state for the currently expanded feature
     if (expandedFeature) {
-      const identifier = getFeatureIdentifier(map, expandedFeature.feature.layer?.id, expandedFeature.feature.id);
+      const identifier = getFeatureIdentifier(map, expandedFeature.feature.layer?.id, expandedFeature.feature.id!);
       if (identifier) {
         map.setFeatureState(identifier, { expanded: true });
       }
@@ -105,7 +106,9 @@ function App() {
       if (feature.properties?.tags && typeof feature.properties.tags === 'string' && feature.properties.tags.startsWith('["')) {
         try {
           feature.properties.tags = JSON.parse(feature.properties.tags);
-        } catch { }
+        } catch {
+          // Ignore JSON parse errors
+        }
       }
       features.push(feature);
     }
@@ -113,18 +116,6 @@ function App() {
       type: 'FeatureCollection' as const,
       features: features
     };
-  }
-
-  function normalizeGeoJSON(geojson: any) {
-    // Clone features to avoid mutating FlatGeobuf objects and normalize tags to arrays
-    geojson.features.forEach((feature: any) => {
-      if (feature.properties?.tags && typeof feature.properties.tags === 'string') {
-        try {
-          feature.properties.tags = JSON.parse(feature.properties.tags);
-        } catch { }
-      }
-    })
-    return geojson;
   }
 
   function initMap(map: maplibregl.Map) {
@@ -193,14 +184,14 @@ function App() {
       console.log("Loading edges");      
       loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/edges.fgb')
         .then(geojson => {
-          const normalized = normalizeGeoJSON(geojson);
-          
+
           // Create multiple simplified versions for high zoom level
           const edgesZoom7 = simplify({
             type: 'FeatureCollection' as const,
-            features: normalized.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm"))
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            features: geojson.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm"))
           }, {tolerance: 0.005, highQuality: false});
-          const edgesZoomDetail = normalized; // No simplification at high zoom
+          const edgesZoomDetail = geojson; // No simplification at high zoom
           
           map.addSource('edges-fgb', {type: 'geojson', data: (edgesZoomDetail), promoteId: 'uuid_edge'});
           map.addLayer({id: 'edges', type: 'line', source: 'edges-fgb', minzoom: 10, 
@@ -259,8 +250,7 @@ function App() {
       console.log("Loading nodes");      
       loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/nodes.fgb')
         .then(geojson => {
-          const normalized = normalizeGeoJSON(geojson);
-          map.addSource('nodes-fgb', {type: 'geojson', data: normalized, promoteId: 'uuid_node'});
+          map.addSource('nodes-fgb', {type: 'geojson', data: geojson, promoteId: 'uuid_node'});
           map.addLayer({id: 'nodes', type: 'circle', source: 'nodes-fgb', minzoom: 15, paint: {
             "circle-radius": 4, 'circle-opacity': 0,
             "circle-stroke-color": [

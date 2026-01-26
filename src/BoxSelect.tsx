@@ -1,5 +1,5 @@
 import { useMap, MapGeoJSONFeature } from "react-map-gl/maplibre";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import maplibregl from "maplibre-gl";
 
 interface BoxSelectProps {
@@ -9,7 +9,6 @@ interface BoxSelectProps {
 
 export function BoxSelect({ onSelect, interactiveLayerIds }: BoxSelectProps) {
   const { current: map } = useMap();
-  const [boxDiv, setBoxDiv] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -52,7 +51,6 @@ export function BoxSelect({ onSelect, interactiveLayerIds }: BoxSelectProps) {
       box.style.pointerEvents = 'none';
       box.style.zIndex = '10';
       canvas.appendChild(box);
-      setBoxDiv(box);
     }
 
     function onMouseMove(e: MouseEvent) {
@@ -94,7 +92,6 @@ export function BoxSelect({ onSelect, interactiveLayerIds }: BoxSelectProps) {
       if (box.parentNode) {
         box.parentNode.removeChild(box);
       }
-      setBoxDiv(null);
 
       mapInstance.dragPan.enable();
 

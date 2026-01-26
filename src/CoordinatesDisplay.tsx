@@ -19,11 +19,13 @@ export function CoordinatesDisplay() {
       setLat(e.lngLat.lat);
     };
 
-    // Initialize
-    updateZoom();
-    const center = map.getCenter();
-    setLng(center.lng);
-    setLat(center.lat);
+    // Initialize - use setTimeout to avoid synchronous setState in effect
+    setTimeout(() => {
+      updateZoom();
+      const center = map.getCenter();
+      setLng(center.lng);
+      setLat(center.lat);
+    }, 0);
 
     // Update zoom on map move
     map.on('zoom', updateZoom);

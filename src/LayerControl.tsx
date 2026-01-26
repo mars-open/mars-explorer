@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import maplibregl, { ControlPosition, Map } from 'maplibre-gl';
+import { useState, useEffect, useRef } from 'react';
+import maplibregl, { ControlPosition } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
 
@@ -139,10 +139,11 @@ export function LayerControl(props: LayerControlProps) {
   );
 
   useEffect(() => {
+    if (!map) return;
     if (rootRef.current && containerRef.current?.parentElement) {
-      rootRef.current.render(<LayerControlWrapper layers={props.layers} map={map?.getMap()!} />);
+      rootRef.current.render(<LayerControlWrapper layers={props.layers} map={map.getMap()!} />);
     }
-  }, [props.layers]);
+  }, [props.layers, map]);
 
   return null;
 };

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import maplibregl, { ControlPosition, Map } from 'maplibre-gl';
+import { useState, useEffect, useRef } from 'react';
+import maplibregl, { ControlPosition } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
 
@@ -32,7 +32,7 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
 
     // Get array of selected tags
     const selectedTagsArray = Object.entries(newSelectedTags)
-      .filter(([_, selected]) => selected)
+      .filter(([, selected]) => selected)
       .map(([t]) => t);
 
     // Apply filter to all layers
@@ -43,6 +43,7 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
       } else {
         // Filter features where tags array contains any of the selected tags
         const filters = selectedTagsArray.map(tag => ['in', tag, ['get', 'tags']]);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const filterExpression: any = ['any', ...filters];
         map.setFilter(layerId, filterExpression);
       }
@@ -130,8 +131,9 @@ function TagsFilterControl({ layerIds, possibleTags, position }: TagsFilterProps
   });
 
   useEffect(() => {
+    if (!map) return;
     if (rootRef.current && containerRef.current?.parentElement) {
-      rootRef.current.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map?.getMap()!} />);
+      rootRef.current.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map.getMap()!} />);
     }
   }, [layerIds, possibleTags, map]);
 

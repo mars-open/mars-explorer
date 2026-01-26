@@ -1,4 +1,4 @@
-import { MapGeoJSONFeature, LngLat, Layer } from "react-map-gl/maplibre";
+import { MapGeoJSONFeature, LngLat } from "react-map-gl/maplibre";
 import { useEffect, useState } from "react";
 
 export class SelectedFeature {
@@ -46,13 +46,18 @@ function Chip({ label }: { label: string }) {
 
 export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange }: SelectedFeaturesPanelProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
+  
+  const MAX_DISPLAY = 100;
+  const displayFeatures = selectedFeatures.slice(0, MAX_DISPLAY);
 
   useEffect(() => {
-    // Collapse all when selected features change
-    setExpandedIndex(0);
-    if (onExpandedChange && selectedFeatures.length > 0) {
-      onExpandedChange(selectedFeatures[0]);
-    }
+    // Collapse all when selected features change - use setTimeout to avoid synchronous setState
+    setTimeout(() => {
+      setExpandedIndex(0);
+      if (onExpandedChange && selectedFeatures.length > 0) {
+        onExpandedChange(selectedFeatures[0]);
+      }
+    }, 0);
   }, [selectedFeatures, onExpandedChange]);
 
   useEffect(() => {
@@ -61,10 +66,7 @@ export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange }: Se
       const expandedFeature = expandedIndex !== null ? displayFeatures[expandedIndex] : null;
       onExpandedChange(expandedFeature || null);
     }
-  }, [expandedIndex]);
-  
-  const MAX_DISPLAY = 100;
-  const displayFeatures = selectedFeatures.slice(0, MAX_DISPLAY);
+  }, [expandedIndex, displayFeatures, onExpandedChange]);
 
   if (selectedFeatures.length === 0) {
     return null;
