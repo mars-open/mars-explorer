@@ -18,20 +18,14 @@ interface TagsFilterContentProps {
 }
 
 function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps) {
-  const [tagConfig, setTagConfig] = useState<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>({});
+  function buildTagConfig(tags: string[]) {
+    return tags.reduce<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>((acc, tag) => {
+      acc[tag] = { selected: true, mode: 'include' };
+      return acc;
+    }, {});
+  }
 
-  // initialize
-  useEffect(() => {
-    setTagConfig(prev => {
-      const next = { ...prev };
-      possibleTags.forEach(tag => {
-        if (!next[tag]) {
-          next[tag] = { selected: true, mode: 'include' };
-        }
-      });
-      return next;
-    });
-  }, [possibleTags]);
+  const [tagConfig, setTagConfig] = useState<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>(() => buildTagConfig(possibleTags));
 
   function toggleTag(tag: string) {
     if (!map) return;
@@ -73,7 +67,7 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
     });
 
     console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`);
-  }, [tagConfig]);
+  }, [tagConfig, layerIds, map]);
 
   return (
       <div style={{display: "flex", flexDirection: "column", margin: 5 }}>

@@ -1,5 +1,8 @@
 # MVT Tile Backend Server
 
+THIS IS NOT IN USE ANYMORE:
+Reading pmtiles and flatgeobuf files directly from Blob storage is simpler and more performant.
+
 !experimental!
 
 Instead of creating FlatGeobuf- and PMTiles-Files and reading them in the UI, the geometry features can be loaded into DuckDB and served as MVT Tiles and GeoJson.
