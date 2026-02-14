@@ -19,9 +19,9 @@ interface TagsFilterContentProps {
 
 function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps) {
   function buildTagConfig(tags: string[]) {
-    return tags.reduce<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>((acc, tag) => {
-      acc[tag] = { selected: true, mode: 'include' };
-      return acc;
+        return tags.reduce<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>((acc, tag) => {
+              acc[tag] = { selected: true, mode: 'include' };
+                    return acc;
     }, {});
   }
 
@@ -118,7 +118,7 @@ function TagsFilterWrapper({layerIds, possibleTags, map}: TagsFilterContentProps
   }
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', minWidth: 150}}>
+    <div style={{display: 'flex', flexDirection: 'column', minWidth: 175}}>
       <div style={{display: 'flex', alignItems: 'center', marginBottom: 1}}>
         <div style={{height: 30, flex: 1, display: 'flex', alignItems: 'center', padding: '0 10px', background: '#f2efefff', fontWeight: 600}}>
           Tags
@@ -127,7 +127,7 @@ function TagsFilterWrapper({layerIds, possibleTags, map}: TagsFilterContentProps
           className="maplibregl-ctrl-icon"
           title="Hide tags filter"
           onClick={() => setOpen(false)}
-          style={{width: 30, height: 30, lineHeight: '28px', padding: 0}}
+          style={{width: 30, height: 30, lineHeight: '28px', padding: 0, borderTop: "0px", borderBottom: "1px solid #f2efefff"}}
         >
           ×
         </button>

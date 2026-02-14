@@ -215,7 +215,7 @@ function App() {
       loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/edges.fgb')
         .then(geojson => {
 
-          // Create multiple simplified versions for high zoom level
+          // Create simplified versions for high zoom level
           const edgesZoom7 = simplify({
             type: 'FeatureCollection' as const,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -367,9 +367,9 @@ function App() {
             onExpandedChange={setExpandedFeature}
           />
           <LayerControl layers={[
-              {id: "pps", name: "Positionspunkte"}, 
-              {id: "edges", name: "Tlm3d Kanten"},
-              {id: "nodes", name: "Tlm3d Knoten"},
+              {id: "pps", name: "Positionspunkte", type: 'circle', color: { color: '#ff0000', target: 'fill' }}, 
+              {id: "edges", name: "Tlm3d Kanten", type: 'line', color: { color: '#0000f0' }},
+              {id: "nodes", name: "Tlm3d Knoten", type: 'circle', color: { color: '#0000f0', target: 'stroke' }},
             ]}
           />
           <TagsFilter layerIds={["pps", "edges", "nodes"]} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>

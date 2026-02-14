@@ -3,7 +3,7 @@
 ## Overview
 - **What it ships**: This repo builds **MARS Explorer**, a Vite + React 19 TypeScript mash-up that renders Swiss railway position points, edges, and nodes with MapLibre GL, `flatgeobuf`, and `pmtiles` data sources ([README.md](README.md) summarizes the public deployment). It keeps the map state in the URL hash, lets you box-select features, and surfaces feature details + layer/tag controls on top of a static `public/lightbasemap_v1190_reduced.json` style.
 - **Project type**: Single-page React client with no runtime backend in this folder (there is an unused `backend-legacy` FastAPI/DuckDB experiment at [backend-legacy/README.md](backend-legacy/README.md) if you ever need server-generated MVT tiles).
-- **Stack & runtimes**: Node.js + Yarn (requires Node 24.11.x per [.node_version](.node_version)). UI deps include `react`, `react-dom`, `react-map-gl/maplibre`, `maplibre-gl`, `flatgeobuf`, `pmtiles`, `@mapbox/mapbox-gl-draw`, and `@turf/simplify`; dev toolchain is Vite 7 + TypeScript 5.2 + ESLint 9 via [package.json](package.json) and [eslint.config.js](eslint.config.js).
+- **Stack & runtimes**: Node.js + Yarn (requires Node 24.11.x per [.node_version](.node_version)). UI deps include `react`, `react-dom`, `react-map-gl/maplibre`, `maplibre-gl`, `flatgeobuf`, `pmtiles`, `react-color`, `@mapbox/mapbox-gl-draw`, and `@turf/simplify`; dev toolchain is Vite 7 + TypeScript 5.2 + ESLint 9 via [package.json](package.json) and [eslint.config.js](eslint.config.js).
 - **Key entry points**: `src/main.tsx` hydrates `App` and `src/App.tsx` wires the map, data loading, Hash syncing, and control components (`LayerControl`, `TagsFilter`, `SelectedFeaturesPanel`, `BoxSelect`, `CoordinatesDisplay`).
 
 ## Environment & prerequisites

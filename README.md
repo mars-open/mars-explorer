@@ -117,4 +117,4 @@ MARS Explorer is distributed under the GNU General Public License version 3 or l
 
 ## Acknowledgments
 
-Built for visualizing Swiss railway position point data for maintenance and infrastructure management applications.
+Great work from Swisstopo TLM3D and OpenStreetMap for providing accurate track geometries!
