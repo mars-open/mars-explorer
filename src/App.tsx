@@ -1,27 +1,21 @@
 import { AttributionControl, Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
-import { useEffect, useRef, useState } from "react";
-import { LayerControl } from "./LayerControl";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LayerControl, Layer } from "./LayerControl";
 import { TagsFilter } from "./TagsFilter";
 import { CoordinatesDisplay } from "./CoordinatesDisplay";
 import { SelectedFeaturesPanel, SelectedFeature } from "./SelectedFeaturesPanel";
 import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
-import * as pmtiles from "pmtiles";
-import * as flatgeobuf from "flatgeobuf";
-import { simplify } from "@turf/simplify";
+import { collapseAttributionControl, registerLayerAsync, registerProtocols, registerSource } from "./mapHelpers";
+import { formatHash, parseHashViewState } from "./appHelpers";
+
 
 // constants
 const ppsZoomLevels = [15, 18, 21].sort((a,b) => b - a).reverse();
 const ppsZoomLevelMin = Math.min(...ppsZoomLevels);
-
-const collapseAttributionControl = (map: maplibregl.Map) => {
-  const container = map.getContainer().querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
-  if (!container || !container.classList.contains("maplibregl-compact")) return;
-  container.classList.remove("maplibregl-compact-show");
-  container.removeAttribute("open");
-};
+const edgesZoomLevelMin = 10;
 
 const defaultViewState = {
   latitude: 46.95061,
@@ -31,17 +25,32 @@ const defaultViewState = {
   bearing: 0
 };
 
-const parseHashViewState = () => {
-  const hash = window.location.hash.replace(/^#/, '');
-  if (!hash) return null;
-  const [lng, lat, zoom] = hash.split('/').map(Number);
-  if ([lng, lat, zoom].some(value => Number.isNaN(value))) return null;
-  return { latitude: lat, longitude: lng, zoom };
-};
 
-const formatHash = (lng: number, lat: number, zoom: number) => {
-  return `#${lng.toFixed(5)}/${lat.toFixed(5)}/${zoom.toFixed(2)}`;
-};
+// Define background layer
+// traffimage, swisstopo or custom... 
+//const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
+//const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
+//const mapStyle = "https://tiles.openfreemap.org/styles/positron"  // or /liberty, /bright
+const mapStyle = "swisstopo_lightbasemap_v1190_reduced.json"
+// Editor: https://maplibre.org/maputnik
+
+// Define sources and layers
+const initialSourceDef = [
+  {id: 'lines-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-osm-line.fgb', promoteId: 'uuid_line'},
+  {id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
+  //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp-raw.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
+  {id: 'edges-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-edges.fgb', promoteId: 'uuid_edge' },
+  {id: 'nodes-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-nodes.fgb', promoteId: 'uuid_node'},
+  // terrain source (always add source, but terrain/hillshade controlled by state)
+  {id: 'pmt-3d', type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'}
+]
+const initialLayerDef: Layer[] = [
+  {id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
+  {id: "edges", name: "Tlm3d Kanten", type: 'line', source: 'edges-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0' }},
+  {id: "nodes", name: "Tlm3d Knoten", type: 'circle', source: 'nodes-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0', target: 'stroke' }},
+  {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', maxzoom: edgesZoomLevelMin, color: { color: "rgb(100, 100, 100)" }}
+]
+// "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
 
 
 function App() {
@@ -53,6 +62,31 @@ function App() {
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapRef>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
+  const [layers, setLayers] = useState<Layer[]>(() => initialLayerDef);
+  const interactiveLayerIds = layers.map(layer => layer.id);
+
+  const handleLayerAdded = useCallback((layer: Layer) => {
+    setLayers(prev => {
+      if (prev.find(existing => existing.id === layer.id)) {
+        return prev;
+      }
+      return [...prev, layer];
+    });
+  }, []);
+
+  const handleLayerRemoved = useCallback((layerId: string) => {
+    setLayers(prev => prev.filter(layer => layer.id !== layerId));
+  }, []);
+
+  const handleLayerColorChange = useCallback((layerId: string, color: string) => {
+    setLayers(prev =>
+      prev.map(layer =>
+        layer.id === layerId
+          ? { ...layer, color: { ...layer.color, color } }
+          : layer
+      )
+    );
+  }, []);
 
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
   const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: string | number) => {
@@ -119,163 +153,15 @@ function App() {
     prevExpandedFeatureRef.current = expandedFeature;
   }, [expandedFeature]);
 
-  // traffimage, swisstopo or custom... 
-  //const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
-  //const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
-  const mapStyle = "lightbasemap_v1190_reduced.json"
-  // Editor: https://maplibre.org/maputnik
-
-  async function loadFlatGeobufGeoJSON(url: string) {
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const features = [];
-    for await (const feature of flatgeobuf.geojson.deserialize(new Uint8Array(arrayBuffer))) {
-      // parse tags property into array
-      if (feature.properties?.tags && typeof feature.properties.tags === 'string' && feature.properties.tags.startsWith('["')) {
-        try {
-          feature.properties.tags = JSON.parse(feature.properties.tags);
-        } catch {
-          // Ignore JSON parse errors
-        }
-      }
-      features.push(feature);
-    }
-    return {
-      type: 'FeatureCollection' as const,
-      features: features
-    };
-  }
-
   function initMap(map: maplibregl.Map) {
     console.log("initMap");    
 
-    // Register PMTiles protocol
-    const pmtProtocol = new pmtiles.Protocol({ errorOnMissingTile: true });
-    maplibregl.addProtocol('pmtiles', pmtProtocol.tile);
-    // mapterhorn terrain: delegetes to different pmtiles files based on zoom
-    maplibregl.addProtocol('mapterhorn', async (params, abortController) => {
-        const [z, x, y] = params.url.replace('mapterhorn://', '').split('/').map(Number);
-        const name = z <= 12 ? 'planet' : `6-${x >> (z - 6)}-${y >> (z - 6)}`;
-        const url = `pmtiles://https://download.mapterhorn.com/${name}.pmtiles/${z}/${x}/${y}.webp`;
-        const response = await pmtProtocol.tile({ ...params, url }, abortController);
-        if (response['data'] === null) throw new Error(`mapterhorn tile z=${z} x=${x} y=${y} not found.`);
-        return response;
-    });    
-    // pps: delegates to pmtiles only for defined zoom levels 15, 18, 21. Other layers are displayed via explicit overzooming.
-    maplibregl.addProtocol('pps', async (params, abortController) => {
-      const [z, x, y] = params.url.replace('pps://', '').split('/').map(Number);
-      if (z < ppsZoomLevelMin) return { data: new Uint8Array(0) }; // No tiles below min zoom
-      if (ppsZoomLevels.includes(z)) {
-        const url = `pmtiles://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/pp.pmtiles/${z}/${x}/${y}.mvt`;
-        try {
-          const response = await pmtProtocol.tile({ ...params, url }, abortController);
-          return response;
-        } catch (error) {
-          if (error instanceof Error && error.message == "Tile not found.") {
-            throw Error("PPS Tile not found");
-          } else throw error;
-        }
-      } else {
-        throw Error("PPS Tile overzoom");
-      }
-    });
+    registerProtocols(ppsZoomLevels);
 
     if (map) {
-
       collapseAttributionControl(map);
-
-      // terrain source (always add source, but terrain/hillshade controlled by state)
-      map.addSource('pmt-3d', {
-        type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'
-      });
-
-      // pps  
-      map.addSource('pps', {
-        type: 'vector', promoteId: 'token', minzoom: ppsZoomLevelMin,
-        tiles: ['pps://{z}/{x}/{y}']
-      });
-      map.addLayer({id: 'pps', type: 'circle', source: 'pps', 'source-layer': 'pps', minzoom: ppsZoomLevelMin, paint: {
-        "circle-radius": 4, "circle-stroke-width": 0,
-        "circle-color": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-          ["boolean", ["feature-state", "selected"], false], "#ff8800",
-          "#ff0000"
-        ]
-      }});
-      // Suppress ONLY overzoom errors (clean console)
-      const oldError = console.error;
-      console.error = (...args) => {
-        if (args[0].message == 'PPS Tile overzoom' || args[0].message == 'PPS Tile not found') return;
-        oldError.apply(console, args);
-      };
-
-      // edges
-      console.log("Loading edges");      
-      loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/edges.fgb')
-        .then(geojson => {
-
-          // Create simplified versions for high zoom level
-          const edgesZoom7 = simplify({
-            type: 'FeatureCollection' as const,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            features: geojson.features.filter((f: any) => f.properties?.tags?.includes("achse_dkm") && !f.properties?.tags?.includes("Tram") && !f.properties?.tags?.includes("standseilbahn"))
-          }, {tolerance: 0.005, highQuality: false});
-          const edgesZoomDetail = geojson; // No simplification at high zoom
-          
-          map.addSource('edges-fgb', {type: 'geojson', data: (edgesZoomDetail), promoteId: 'uuid_edge'});
-          map.addLayer({id: 'edges', type: 'line', source: 'edges-fgb', minzoom: 10, 
-            paint: {
-              "line-color": [
-                "case",
-                ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-                ["boolean", ["feature-state", "selected"], false], "#ff8800",
-                "#0000f0ff"
-              ],
-              "line-width": [
-                "case",
-                ["boolean", ["feature-state", "expanded"], false], 2,
-                ["boolean", ["feature-state", "selected"], false], 2,
-                1
-              ],
-            }         
-          }, "pps");
-
-          map.addSource('edges-reduced', {type: 'geojson', data: (edgesZoom7), promoteId: 'uuid_edge'});
-          map.addLayer({id: 'edges-reduced', type: 'line', source: 'edges-reduced', maxzoom: 10, 
-            paint: {
-              "line-color": "rgb(100, 100, 100)",
-              "line-width": 1,
-              "line-blur": 0.5,
-              "line-opacity": 0.7
-            }         
-          });        
-        })
-        .catch(error => console.error("Error loading edges:", error));
-
-      // nodes  
-      console.log("Loading nodes");      
-      loadFlatGeobufGeoJSON('https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/nodes.fgb')
-        .then(geojson => {
-          map.addSource('nodes-fgb', {type: 'geojson', data: geojson, promoteId: 'uuid_node'});
-          map.addLayer({id: 'nodes', type: 'circle', source: 'nodes-fgb', minzoom: 15, paint: {
-            "circle-radius": 4, 'circle-opacity': 0,
-            "circle-stroke-color": [
-              "case",
-              ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-              ["boolean", ["feature-state", "selected"], false], "#ff8800",
-              "#0000f0ff"
-            ],
-            "circle-stroke-width": [
-              "case",
-              ["boolean", ["feature-state", "expanded"], false], 2,
-              ["boolean", ["feature-state", "selected"], false], 2,
-              1
-            ]
-          }});
-        })
-        .catch(error => console.error("Error loading nodes:", error));
-
+      initialSourceDef.forEach(source => registerSource(map, source));
+      initialLayerDef.forEach(layer => registerLayerAsync(map, layer));
       setMapReady(true);
     }
   };
@@ -315,7 +201,7 @@ function App() {
           initialViewState={initialViewState}
           mapStyle={mapStyle}
           minZoom={7}
-          interactiveLayerIds={["pps","edges","nodes"]}
+          interactiveLayerIds={interactiveLayerIds}
           cursor={hoveredFeature ? 'pointer' : 'default'} // Dynamic cursor
           onLoad={(e) => initMap(e.target)}
           attributionControl={false}
@@ -352,7 +238,7 @@ function App() {
         >
           <NavigationControl visualizePitch={true} visualizeRoll={true} showCompass={true} showZoom={true} />
           <BoxSelect 
-            interactiveLayerIds={["pps", "edges", "nodes"]}
+            interactiveLayerIds={interactiveLayerIds}
             onSelect={(features, center) => {
               if (features.length > 0) {
                 const newFeatures = features.map(f => new SelectedFeature(f, center));
@@ -366,13 +252,13 @@ function App() {
             selectedFeatures={selectedFeatures} 
             onExpandedChange={setExpandedFeature}
           />
-          <LayerControl layers={[
-              {id: "pps", name: "Positionspunkte", type: 'circle', color: { color: '#ff0000', target: 'fill' }}, 
-              {id: "edges", name: "Tlm3d Kanten", type: 'line', color: { color: '#0000f0' }},
-              {id: "nodes", name: "Tlm3d Knoten", type: 'circle', color: { color: '#0000f0', target: 'stroke' }},
-            ]}
+          <LayerControl
+            layers={layers}
+            onAddLayer={handleLayerAdded}
+            onRemoveLayer={handleLayerRemoved}
+            onLayerColorChange={handleLayerColorChange}
           />
-          <TagsFilter layerIds={["pps", "edges", "nodes"]} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>
+          <TagsFilter layerIds={interactiveLayerIds} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>
           <CoordinatesDisplay />
           <AttributionControl position="top-right" compact={true} />
         </Map>

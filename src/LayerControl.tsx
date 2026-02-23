@@ -7,14 +7,20 @@ import { ColorResult, SliderPicker } from 'react-color';
 import * as flatgeobuf from 'flatgeobuf';
 
 
-interface Layer {
+export interface Layer {
   id: string;
   name: string;
   type: LayerType;
+  source: string;
+  sourceLayer?: string;
+  minzoom?: number;
+  maxzoom?: number;
   color: LayerColor;
+  removable?: boolean;
+  active?: boolean;
 }
 
-type LayerType = 'line' | 'circle';
+type LayerType = 'circle' | 'line';
 
 type LayerColor =
   | { color: string }
@@ -25,26 +31,91 @@ const defaultLayerColor = (type: LayerType): LayerColor =>
     ? { color: '#24c6c6', target: 'fill' }
     : { color: '#24c6c6' };
 
+export function layerPaint(type: LayerType, color: LayerColor): any {
+  if (type === 'circle') {
+    if ((color as any).target === 'stroke') {
+      return {
+        "circle-radius": 4, 'circle-opacity': 0,
+        "circle-stroke-color": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+          ["boolean", ["feature-state", "selected"], false], "#ff8800",
+          color.color
+        ],
+        "circle-stroke-width": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], 2,
+          ["boolean", ["feature-state", "selected"], false], 2,
+          1
+        ]
+      };
+    } else {
+      return {
+        "circle-radius": 4, "circle-stroke-width": 0,
+        "circle-color": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+          ["boolean", ["feature-state", "selected"], false], "#ff8800",
+          color.color
+        ]      
+      }
+    }
+  } else if (type === 'line') {
+    return {
+      "line-color": [
+        "case",
+        ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+        ["boolean", ["feature-state", "selected"], false], "#ff8800",
+        color.color
+      ],
+      "line-width": [
+        "case",
+        ["boolean", ["feature-state", "expanded"], false], 2,
+        ["boolean", ["feature-state", "selected"], false], 2,
+        1
+      ],
+    }
+  } else {
+    return { 'line-color': color.color!, 'line-width': 1 };
+  }
+}  
+
 interface LayerControlProps {
   layers: Layer[];
   position?: ControlPosition;
+  onAddLayer: (layer: Layer) => void;
+  onRemoveLayer: (layerId: string) => void;
+  onLayerColorChange: (layerId: string, color: string) => void;
 }
 
 interface LayerControlContentProps {
   layers: Layer[];
   map: maplibregl.Map | null;
-  customLayers: Layer[];
-  onRemoveCustomLayer: (id: string) => void;
+  onRemoveLayer: (id: string) => void;
   onConfigureLayer: (layerId: string) => void;
   onColorChange: (layerId: string, color: ColorResult) => void;
   activeLayerId: string | undefined;
-  activeLayerColor?: string;
 }
 
-function LayerControlContent({layers, map, customLayers, onRemoveCustomLayer, onConfigureLayer, onColorChange, activeLayerId, activeLayerColor}: LayerControlContentProps) {
+function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onColorChange, activeLayerId}: LayerControlContentProps) {
   const [layerStates, setLayerStates] = useState<Record<string, boolean>>({});
   const [terrainEnabled, setTerrainEnabled] = useState<boolean>(false);
-  const allLayers = [...layers, ...customLayers];
+  const allLayers = layers;
+
+  useEffect(() => {
+    console.log("layers changed")
+    setLayerStates(prev => {
+      let changed = false;
+      const next = { ...prev };
+      layers.forEach(layer => {
+        if (!(layer.id in next)) {
+          next[layer.id] = true;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [layers]);
 
   function toggleLayer(layerId: string) {
     if (!map) return;
@@ -92,12 +163,12 @@ function LayerControlContent({layers, map, customLayers, onRemoveCustomLayer, on
               />
               {layer.name}
             </label>
-            {customLayers.findIndex(custom => custom.id === layer.id) >= 0 && (
+            {layer.removable && (
               <button
                 type="button"
                 className="maplibregl-ctrl-icon"
                 title="Remove custom layer"
-                onClick={() => onRemoveCustomLayer(layer.id)}
+                onClick={() => onRemoveLayer(layer.id)}
                 style={{ width: 20, height: 22, lineHeight: '22px', padding: 0, fontSize: '0.7rem' }}
               >
                 −
@@ -117,7 +188,7 @@ function LayerControlContent({layers, map, customLayers, onRemoveCustomLayer, on
           </div>
           {activeLayerId === layer.id && (
             <div style={{ padding: '1px 6px 8px 6px', borderBottom: '1px solid rgba(0,0,0,0.12)', background: 'white' }}>
-              <SliderPicker color={activeLayerColor} onChange={(colorResult: ColorResult) => onColorChange(layer.id, colorResult)} />
+              <SliderPicker key={layer.id} color={layer.color.color} onChange={(colorResult: ColorResult) => onColorChange(layer.id, colorResult)} />
             </div>
           )}
         </div>
@@ -142,18 +213,19 @@ function LayerControlContent({layers, map, customLayers, onRemoveCustomLayer, on
 interface LayerControlWrapperProps {
   layers: Layer[];
   map: maplibregl.Map | null;
+  onAddLayer: (layer: Layer) => void;
+  onRemoveLayer: (layerId: string) => void;
+  onLayerColorChange: (layerId: string, color: string) => void;
 }
 
-function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
+function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerColorChange}: LayerControlWrapperProps) {
   const [open, setOpen] = useState(false);
-  const [customLayers, setCustomLayers] = useState<Layer[]>([]);
   const [activeLayerId, setActiveLayerId] = useState<string | undefined>(undefined);
-  const [activeLayerColor, setActiveLayerColor] = useState<string | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const getLayerById = (layerId?: string): Layer | undefined => {
     if (!layerId) return undefined;
-    return [...layers, ...customLayers].find(layer => layer.id === layerId);
+    return layers.find(layer => layer.id === layerId);
   };
 
   if (!open) {
@@ -171,38 +243,38 @@ function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
     );
   }
 
-    async function loadFlatGeobuf(file: File): Promise<FeatureCollection> {
-      const arrayBuffer = await file.arrayBuffer();
-      const features = [];
-      for await (const feature of flatgeobuf.geojson.deserialize(new Uint8Array(arrayBuffer))) {
-        features.push(feature);
-      }
-      return { type: 'FeatureCollection', features };
+  async function loadFlatGeobuf(file: File): Promise<FeatureCollection> {
+    const arrayBuffer = await file.arrayBuffer();
+    const features = [];
+    for await (const feature of flatgeobuf.geojson.deserialize(new Uint8Array(arrayBuffer))) {
+      features.push(feature);
     }
+    return { type: 'FeatureCollection', features };
+  }
 
-    function detectLayerType(geojson: FeatureCollection): LayerType {
-      const type = geojson.features[0]?.geometry?.type ?? '';
-      if (type.includes('Point')) return 'circle';
-      if (type.includes('Line')) return 'line';
-      if (type.includes('Polygon')) return 'line';
-      return 'line';
-    }
+  function detectLayerType(geojson: FeatureCollection): LayerType {
+    const type = geojson.features[0]?.geometry?.type ?? '';
+    if (type.includes('Point')) return 'circle';
+    if (type.includes('Line')) return 'line';
+    if (type.includes('Polygon')) return 'line';
+    return 'line';
+  }
 
-    function paintForType(type: LayerType) {
-      if (type === 'circle') {
-        return { 'circle-radius': 4, 'circle-stroke-width': 1 };
-      }
-      return { 'line-width': 2 };
+  function paintForType(type: LayerType) {
+    if (type === 'circle') {
+      return { 'circle-radius': 4, 'circle-stroke-width': 1 };
     }
+    return { 'line-width': 2 };
+  }
 
-    function buildLayerId(name: string) {
-      const withoutExtension = name.replace(/\.[^.]+$/, '');
-      const sanitized = withoutExtension
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') || 'layer';
-      return `local-${sanitized}-${Date.now()}`;
-    }
+  function buildLayerId(name: string) {
+    const withoutExtension = name.replace(/\.[^.]+$/, '');
+    const sanitized = withoutExtension
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'layer';
+    return `local-${sanitized}-${Date.now()}`;
+  }
 
   const paintProperty = (layer: Layer): 'circle-color' | 'circle-stroke-color' | 'line-color' => {
     if (layer.type === 'line') return 'line-color';
@@ -210,11 +282,11 @@ function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
     return 'line-color';
   };
 
-  const applyLayerColor = (layer: Layer, color: LayerColor) => {
+  const applyLayerColor = (layer: Layer, colorHex: string) => {
     if (!map) return;
     const prop = paintProperty(layer);
-    map.setPaintProperty(layer.id, prop, color.color);
-    setActiveLayerColor(color.color);
+    map.setPaintProperty(layer.id, prop, colorHex);
+    onLayerColorChange(layer.id, colorHex);
   };
 
   const handleConfigureLayer = (layerId: string) => {
@@ -222,18 +294,19 @@ function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
   };
 
   const handleColorChange = (layerId: string, colorResult: ColorResult) => {
-    const layer = getLayerById(layerId)!;
-    const existing = layer.color;
-    const updated: LayerColor = { ...existing, color: colorResult.hex };
-    applyLayerColor(layer, updated);
-    layer.color = updated;
+    const layer = getLayerById(layerId);
+    if (!layer) return;
+    applyLayerColor(layer, colorResult.hex);
   };
 
-  const handleRemoveCustomLayer = (layerId: string) => {
+  const handleRemoveLayer = (layerId: string) => {
     if (!map) return;
     if (map.getLayer(layerId)) map.removeLayer(layerId);
     if (map.getSource(layerId)) map.removeSource(layerId);
-    setCustomLayers(prev => prev.filter(layer => layer.id !== layerId));
+    if (activeLayerId === layerId) {
+      setActiveLayerId(undefined);
+    }
+    onRemoveLayer(layerId);
   };
 
   return (
@@ -265,13 +338,20 @@ function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
             map.addSource(layerId, { type: 'geojson', data: geojson });
             map.addLayer({
               id: layerId,
-              type: layerType,
+              type: (layerType as any),
               source: layerId,
               layout: { visibility: 'visible' },
               paint: paintForType(layerType)
             });
             const newLayerColor = defaultLayerColor(layerType);
-            setCustomLayers(prev => [...prev, { id: layerId, name: file.name, type: layerType, color: newLayerColor }]);
+            onAddLayer({
+              id: layerId,
+              name: file.name,
+              type: layerType,
+              source: layerId,
+              color: newLayerColor,
+              removable: true
+            });
           } catch (error) {
             console.error('Failed to load FlatGeobuf file', error);
           }
@@ -301,12 +381,10 @@ function LayerControlWrapper({layers, map}: LayerControlWrapperProps) {
       <LayerControlContent
         layers={layers}
         map={map}
-        customLayers={customLayers}
-        onRemoveCustomLayer={handleRemoveCustomLayer}
+        onRemoveLayer={handleRemoveLayer}
         onConfigureLayer={handleConfigureLayer}
         onColorChange={handleColorChange}
         activeLayerId={activeLayerId}
-        activeLayerColor={activeLayerColor || getLayerById(activeLayerId)?.color.color}
       />
     </div>
   );
@@ -326,7 +404,17 @@ export function LayerControl(props: LayerControlProps) {
       
       // Defer initial render to avoid React warning
       setTimeout(() => {
-        if (map) root.render(<LayerControlWrapper layers={props.layers} map={map.getMap()} />);
+        if (map) {
+          root.render(
+            <LayerControlWrapper
+              layers={props.layers}
+              map={map.getMap()}
+              onAddLayer={props.onAddLayer}
+              onRemoveLayer={props.onRemoveLayer}
+              onLayerColorChange={props.onLayerColorChange}
+            />
+          );
+        }
       }, 0);
       
       return { 
@@ -343,9 +431,17 @@ export function LayerControl(props: LayerControlProps) {
   useEffect(() => {
     if (!map) return;
     if (rootRef.current && containerRef.current?.parentElement) {
-      rootRef.current.render(<LayerControlWrapper layers={props.layers} map={map.getMap()!} />);
+      rootRef.current.render(
+        <LayerControlWrapper
+          layers={props.layers}
+          map={map.getMap()!}
+          onAddLayer={props.onAddLayer}
+          onRemoveLayer={props.onRemoveLayer}
+          onLayerColorChange={props.onLayerColorChange}
+        />
+      );
     }
-  }, [props.layers, map]);
+  }, [props.layers, map, props.onAddLayer, props.onRemoveLayer, props.onLayerColorChange]);
 
   return null;
 };

@@ -68,26 +68,10 @@ yarn lint
 
 ## Data Preparation
 
-Position point data should be prepared using the **mars-pp** repository (not yet public). The prepared data is expected in formats compatible with the application:
+Position point data should be prepared using the **mars-base** repository. The prepared data is expected in formats compatible with the application:
 
 - FlatGeobuf (`.fgb`) files for vector data
 - PMTiles (`.pmtiles`) for tiled map data
-- GeoJSON for basemap and feature data
-
-## Project Structure
-
-```
-├── src/
-│   ├── App.tsx                    # Main application component
-│   ├── BoxSelect.tsx              # Box selection tool
-│   ├── CoordinatesDisplay.tsx     # Coordinate display component
-│   ├── LayerControl.tsx           # Layer visibility control
-│   ├── SelectedFeaturesPanel.tsx  # Feature details panel
-│   └── TagsFilter.tsx             # Tag-based filtering component
-├── public/                        # Static assets
-└── .github/workflows/             # CI/CD workflows
-
-```
 
 ## Deployment
 
