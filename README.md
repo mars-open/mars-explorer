@@ -87,7 +87,7 @@ MARS Explorer is distributed under the GNU General Public License version 3 or l
 
 ## Contributors
 
-[![ELCA AG](../mars-base/.assets/elca.png)](https://www.elca.ch/data-platform-service)
+[![ELCA AG](https://github.com/mars-open/mars-base/raw/master/.assets/elca.png)](https://www.elca.ch/data-platform-service)
 
 ## Contributing
 
