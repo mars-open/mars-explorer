@@ -81,23 +81,17 @@ The application is automatically deployed to GitHub Pages when changes are pushe
 2. Deploys to GitHub Pages
 3. Makes the app available at `https://mars-open.github.io/mars-explorer/`
 
-## Configuration
-
-The base path for deployment is configured in [vite.config.ts](vite.config.ts):
-
-```typescript
-base: "/mars-explorer/"
-```
-
-Update this to match your repository name if you fork the project.
-
-## Contributing
-
-This is a specialized tool for railway infrastructure maintenance visualization. Contributions are always welcome for.
-
 ## License
 
 MARS Explorer is distributed under the GNU General Public License version 3 or later. The full terms of the license can be found at https://www.gnu.org/licenses/gpl-3.0.en.html.
+
+## Contributors
+
+[![ELCA AG](/.assets/elca.png)](https://www.elca.ch/data-platform-service)
+
+## Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request with your changes.
 
 ## Acknowledgments
 
