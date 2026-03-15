@@ -143,19 +143,22 @@ function TagsFilterControl({ layerIds, possibleTags, position }: TagsFilterProps
   const { current: map } = useMap();
 
   useControl(() => {
-    const container = document.createElement('div');
-    containerRef.current = container;
-    container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-    const root = createRoot(container);
-    rootRef.current = root;
+
     
     // Defer initial render to avoid React warning
     setTimeout(() => {
-      if (map) root.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map.getMap()} />);
     }, 0);
     
     return { 
-      onAdd: () => container, 
+      onAdd: (map) => {
+        const container = document.createElement('div');
+        containerRef.current = container;
+        container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        const root = createRoot(container);
+        rootRef.current = root;        
+        root.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map} />);
+        return container;
+      }, 
       onRemove: () => {
         containerRef.current?.remove();
       }

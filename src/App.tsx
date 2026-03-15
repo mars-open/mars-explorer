@@ -37,7 +37,7 @@ const mapStyle = "swisstopo_lightbasemap_v1190_reduced.json"
 // Define sources and layers
 const initialSourceDef = [
   {id: 'lines-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-osm-line.fgb', promoteId: 'uuid_line'},
-  {id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
+  //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
   //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp-raw.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
   {id: 'edges-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-edges.fgb', promoteId: 'uuid_edge' },
   {id: 'nodes-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-nodes.fgb', promoteId: 'uuid_node'},
@@ -45,10 +45,10 @@ const initialSourceDef = [
   {id: 'pmt-3d', type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'}
 ]
 const initialLayerDef: Layer[] = [
-  {id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
+  //{id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
   {id: "edges", name: "Tlm3d Kanten", type: 'line', source: 'edges-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0' }},
   {id: "nodes", name: "Tlm3d Knoten", type: 'circle', source: 'nodes-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0', target: 'stroke' }},
-  {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', maxzoom: edgesZoomLevelMin, color: { color: "rgb(100, 100, 100)" }}
+  {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', minzoom: 5, maxzoom: edgesZoomLevelMin, color: { color: "rgb(100, 100, 100)" }}
 ]
 // "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
 

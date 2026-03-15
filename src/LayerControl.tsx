@@ -100,10 +100,9 @@ interface LayerControlContentProps {
 function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onColorChange, activeLayerId}: LayerControlContentProps) {
   const [layerStates, setLayerStates] = useState<Record<string, boolean>>({});
   const [terrainEnabled, setTerrainEnabled] = useState<boolean>(false);
-  const allLayers = layers;
 
   useEffect(() => {
-    console.log("layers changed")
+    if (!layers) return;
     setLayerStates(prev => {
       let changed = false;
       const next = { ...prev };
@@ -116,6 +115,8 @@ function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onCo
       return changed ? next : prev;
     });
   }, [layers]);
+
+  if (!map || !layers) return null;
 
   function toggleLayer(layerId: string) {
     if (!map) return;
@@ -147,7 +148,7 @@ function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onCo
   return (
 
     <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
-      {allLayers.map(layer => (
+      {layers.map(layer => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} key={layer.id}>
           <div className="items-center cursor-pointer mb-1" 
             style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
@@ -393,35 +394,28 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
 export function LayerControl(props: LayerControlProps) {
   const rootRef = useRef<ReturnType<typeof createRoot> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-    const { current: map } = useMap();
+  const { current: map } = useMap();
   
-  useControl(() => {
-      const container = document.createElement('div');
-      containerRef.current = container;
-      container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
-      const root = createRoot(container);
-      rootRef.current = root;
-      
-      // Defer initial render to avoid React warning
-      setTimeout(() => {
-        if (map) {
+  useControl(() => {      
+      return { 
+        onAdd: (map) => {
+          const container = document.createElement('div');
+          containerRef.current = container;
+          container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+          const root = createRoot(container);
+          rootRef.current = root;          
           root.render(
             <LayerControlWrapper
               layers={props.layers}
-              map={map.getMap()}
+              map={map}
               onAddLayer={props.onAddLayer}
               onRemoveLayer={props.onRemoveLayer}
               onLayerColorChange={props.onLayerColorChange}
             />
           );
-        }
-      }, 0);
-      
-      return { 
-        onAdd: () => container, 
-        onRemove: () => {
-          containerRef.current?.remove();
-        }
+          return container;          
+        }, 
+        onRemove: () => {}
       };
     }, {
       position: props.position || 'top-right'
