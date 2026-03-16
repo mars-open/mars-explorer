@@ -1,4 +1,9 @@
-import { Layer } from "../LayerControl";
+import { Layer } from "../mapHelpers";
+
+export interface LayerColorOverride {
+  color: string;
+  target?: "stroke" | "fill";
+}
 
 export interface LayerConfiguration {
   id: string;
@@ -6,4 +11,5 @@ export interface LayerConfiguration {
   description?: string;
   layers: Layer[];
   interactive: string[];
+  colorOverrides?: Record<string, LayerColorOverride>;
 }

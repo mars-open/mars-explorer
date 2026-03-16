@@ -24,6 +24,12 @@ export type SourceDefinition =
       type: "fgb";
       data: string;
       promoteId?: string;
+    }
+  | {
+      id: string;
+      type: "geojson";
+      data: FeatureCollection<Geometry, GeoJsonProperties>;
+      promoteId?: string;
     };
 
 export function registerProtocols(ppsZoomLevels: number[]) {
@@ -186,7 +192,10 @@ export function registerSource(map: maplibregl.Map, source: SourceDefinition) {
         map.addSource(source.id, {type: 'geojson', data: geojson, promoteId: source.promoteId });
         sources[source.id] = true;
       });
-  }
+  } else if (source.type === 'geojson') {
+    map.addSource(source.id, {type: 'geojson', data: source.data, promoteId: source.promoteId });
+    sources[source.id] = true
+  }  
 }
 
 export function registerLayerAsync(map: maplibregl.Map, layer: Layer) {

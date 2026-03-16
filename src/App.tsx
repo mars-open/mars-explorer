@@ -11,7 +11,8 @@ import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
 import { collapseAttributionControl, Layer, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
-import { LayerConfiguration } from "./types/layerConfiguration";
+import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
+import { importGbmZipAsLayer } from "./GBMSource";
 
 
 // constants
@@ -64,7 +65,7 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       id: 'ch',
       label: 'Switzerland TLM3D',
       description: 'Positionpoints of Switzerland, based on Swisstopo TLM3D data.',
-      layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']], // TODO!!
+      layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']],
       interactive: ['pps', 'edges', 'nodes', 'lines']
     },
     {
@@ -72,18 +73,29 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       label: 'GBM',
       description: 'Load and analyze GBM files',
       layers: [layerMap['edges'], layerMap['lines']],
-      interactive: ['lines']
+      interactive: ['lines', 'gbm-points'],
+      colorOverrides: {
+        edges: { color: 'rgb(100, 100, 100)' },
+      }
     }
   ];
 })();
 
 const defaultLayerConfigId = 'ch';
 
-const cloneLayers = (sourceLayers: Layer[]) =>
-  sourceLayers.map(layer => ({
+const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer => {
+  if (!override) return layer;
+
+  return {
     ...layer,
-    color: { ...layer.color }
-  }));
+    color: {
+      color: override.color
+    }
+  };
+};
+
+const cloneLayers = (sourceLayers: Layer[], colorOverrides?: LayerConfiguration['colorOverrides']) =>
+  sourceLayers.map(layer => applyColorOverride(layer, colorOverrides?.[layer.id]));
 
 const normalizeBasePath = (baseUrl: string) => {
   const trimmed = baseUrl.replace(/^\/+|\/+$/g, "");
@@ -117,8 +129,9 @@ function App() {
   const [boxSelectActive, setBoxSelectActive] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapRef>(null);
+  const gbmUploadInputRef = useRef<HTMLInputElement>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
-  const [layers, setLayers] = useState<Layer[]>(() => cloneLayers(initialLayerConfig.layers));
+  const [layers, setLayers] = useState<Layer[]>(() => cloneLayers(initialLayerConfig.layers, initialLayerConfig.colorOverrides));
   const [selectedLayerConfigId, setSelectedLayerConfigId] = useState(initialLayerConfig.id);
   const selectedLayerConfig = layerConfigurations.find(cfg => cfg.id === selectedLayerConfigId)
     ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
@@ -132,7 +145,7 @@ function App() {
     const config = layerConfigurations.find(cfg => cfg.id === configId)
       ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
       ?? layerConfigurations[0];
-    const clonedLayers = cloneLayers(config.layers);
+    const clonedLayers = cloneLayers(config.layers, config.colorOverrides);
     setSelectedLayerConfigId(config.id);
     setLayers(clonedLayers);
 
@@ -195,6 +208,28 @@ function App() {
       )
     );
   }, []);
+
+  const handleGbmUploadClick = useCallback(() => {
+    gbmUploadInputRef.current?.click();
+  }, []);
+
+  const handleGbmZipSelected = useCallback(async (file: File) => {
+    if (selectedLayerConfigId !== 'gbm') {
+      console.warn('GBM upload is only available in GBM configuration.');
+      return;
+    }
+
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    try {
+      const imported = await importGbmZipAsLayer(map, file);
+      handleLayerAdded(imported.layerDefinition);
+      console.log(`Loaded GBM points layer with ${imported.pointCount} points.`);
+    } catch (error) {
+      console.error('Failed to process GBM ZIP upload', error);
+    }
+  }, [handleLayerAdded, selectedLayerConfigId]);
 
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
   const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: string | number) => {
@@ -300,10 +335,23 @@ function App() {
 
   return (
     <div className="app-shell">
+      <input
+        ref={gbmUploadInputRef}
+        type="file"
+        accept=".zip,application/zip"
+        style={{ display: 'none' }}
+        onChange={async (event) => {
+          const file = event.target.files?.[0];
+          event.currentTarget.value = '';
+          if (!file) return;
+          await handleGbmZipSelected(file);
+        }}
+      />
       <AppBar
         selectedLayerConfigId={selectedLayerConfigId}
         layerConfigurations={layerConfigurations}
         onLayerConfigChange={handleLayerConfigChange}
+        onGbmUploadClick={handleGbmUploadClick}
       />
       <main className="map-wrapper">
         <Map
