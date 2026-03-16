@@ -21,6 +21,7 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toLngLat(point: any): [number, number] | null {
   if (point == null || typeof point !== 'object') return null;
   const lat = toNumber(point.lat);
@@ -38,7 +39,7 @@ const features: Map<string, Feature<Point | null>> = new Map();
 export async function parseGbmZipToPoints(file: File): Promise<Feature<Point | null>[]> {
   const zipContent = await file.arrayBuffer();
   const zip = await JSZip.loadAsync(zipContent);
-  var foundGbmData = false;
+  let foundGbmData = false;
 
   for (const [path, zipEntry] of Object.entries(zip.files)) {
     if (zipEntry.dir) continue;
@@ -52,6 +53,7 @@ export async function parseGbmZipToPoints(file: File): Promise<Feature<Point | n
     const dataEntries = Array.isArray(document.data) ? document.data : [];
     dataEntries.forEach(entry => {
       if (!Array.isArray(entry.points)) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       entry.points.forEach((rawPoint: any) => {
         // extract position, remove from rawPoint
         const positionpointId = rawPoint.position?.id_positionpoint?.toString();
@@ -63,6 +65,7 @@ export async function parseGbmZipToPoints(file: File): Promise<Feature<Point | n
         const props = {...rawPoint, topoelements: [{id: topoelementId, position: position}]};
         const existing = features.get(positionpointId);
         const existingProps = existing?.properties ?? {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const topoelements = props.topoelements.concat((existingProps.topoelements ?? []).filter((x: any) => !props.topoelements.some((y: any) => y.id === x.id)));
         const newProps = { ...existingProps, ...props, topoelements: topoelements, id_positionpoint: positionpointId };
         const coordinates = toLngLat(rawPoint.point)

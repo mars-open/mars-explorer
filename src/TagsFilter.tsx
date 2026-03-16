@@ -28,6 +28,7 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
   const [tagConfig, setTagConfig] = useState<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>(() => buildTagConfig(possibleTags));
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTagConfig(buildTagConfig(possibleTags));
   }, [possibleTags]);
 
