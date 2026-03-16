@@ -1,0 +1,66 @@
+.app-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.75rem;
+  min-height: 64px;
+  background: linear-gradient(135deg, rgba(1, 37, 90, 0.92), rgba(4, 9, 26, 0.95));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+.app-bar__branding span {
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  font-size: 1rem;
+}
+
+.app-bar__subtitle {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.app-bar__config {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.app-bar__config-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.85);
+  gap: 0.35rem;
+}
+
+.app-bar__config select {
+  min-width: 220px;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.app-bar__config-label select:focus-visible {
+  outline: 2px solid #9bc3ff;
+  outline-offset: 2px;
+}
+
+.app-bar__config-description {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+}

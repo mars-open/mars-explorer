@@ -2,14 +2,16 @@ import { AttributionControl, Map, MapGeoJSONFeature, MapRef, NavigationControl }
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LayerControl, Layer } from "./LayerControl";
+import { AppBar } from "./AppBar";
+import { LayerControl } from "./LayerControl";
 import { TagsFilter } from "./TagsFilter";
 import { CoordinatesDisplay } from "./CoordinatesDisplay";
 import { SelectedFeaturesPanel, SelectedFeature } from "./SelectedFeaturesPanel";
 import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
-import { collapseAttributionControl, registerLayerAsync, registerProtocols, registerSource } from "./mapHelpers";
+import { collapseAttributionControl, Layer, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
+import { LayerConfiguration } from "./types/layerConfiguration";
 
 
 // constants
@@ -35,9 +37,9 @@ const mapStyle = "swisstopo_lightbasemap_v1190_reduced.json"
 // Editor: https://maplibre.org/maputnik
 
 // Define sources and layers
-const initialSourceDef = [
+const initialSourceDef: SourceDefinition[] = [
   {id: 'lines-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-osm-line.fgb', promoteId: 'uuid_line'},
-  //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
+  {id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
   //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp-raw.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
   {id: 'edges-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-edges.fgb', promoteId: 'uuid_edge' },
   {id: 'nodes-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-nodes.fgb', promoteId: 'uuid_node'},
@@ -45,15 +47,69 @@ const initialSourceDef = [
   {id: 'pmt-3d', type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'}
 ]
 const initialLayerDef: Layer[] = [
-  //{id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
+  {id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
   {id: "edges", name: "Tlm3d Kanten", type: 'line', source: 'edges-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0' }},
   {id: "nodes", name: "Tlm3d Knoten", type: 'circle', source: 'nodes-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0', target: 'stroke' }},
   {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', minzoom: 5, maxzoom: edgesZoomLevelMin, color: { color: "rgb(100, 100, 100)" }}
 ]
+
+const layerConfigurations: LayerConfiguration[] = (() => {
+  const layerMap = initialLayerDef.reduce<Record<string, Layer>>((acc, layer) => {
+    acc[layer.id] = layer;
+    return acc;
+  }, {});
+
+  return [
+    {
+      id: 'ch',
+      label: 'Switzerland TLM3D',
+      description: 'Positionpoints of Switzerland, based on Swisstopo TLM3D data.',
+      layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']], // TODO!!
+      interactive: ['pps', 'edges', 'nodes', 'lines']
+    },
+    {
+      id: 'gbm',
+      label: 'GBM',
+      description: 'Load and analyze GBM files',
+      layers: [layerMap['edges'], layerMap['lines']],
+      interactive: ['lines']
+    }
+  ];
+})();
+
+const defaultLayerConfigId = 'ch';
+
+const cloneLayers = (sourceLayers: Layer[]) =>
+  sourceLayers.map(layer => ({
+    ...layer,
+    color: { ...layer.color }
+  }));
+
+const normalizeBasePath = (baseUrl: string) => {
+  const trimmed = baseUrl.replace(/^\/+|\/+$/g, "");
+  return trimmed ? `/${trimmed}` : "";
+};
+
+const parseLayerConfigIdFromPath = (configs: LayerConfiguration[]) => {
+  const pathSegments = window.location.pathname.split('/').filter(Boolean);
+  const candidate = pathSegments[pathSegments.length - 1];
+  const matchingConfig = configs.find(config => config.id === candidate);
+  return matchingConfig?.id ?? defaultLayerConfigId;
+};
+
+const formatPathForLayerConfig = (configId: string) => {
+  const basePath = normalizeBasePath(import.meta.env.BASE_URL);
+  return `${basePath}/${configId}`;
+};
 // "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
 
 
 function App() {
+
+  const initialLayerConfigId = parseLayerConfigIdFromPath(layerConfigurations);
+  const initialLayerConfig = layerConfigurations.find(cfg => cfg.id === initialLayerConfigId)
+    ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
+    ?? layerConfigurations[0];
 
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeature[]>([]);
   const [expandedFeature, setExpandedFeature] = useState<SelectedFeature | null>(null);
@@ -62,8 +118,60 @@ function App() {
   const [mapReady, setMapReady] = useState(false);
   const mapRef = useRef<MapRef>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
-  const [layers, setLayers] = useState<Layer[]>(() => initialLayerDef);
-  const interactiveLayerIds = layers.map(layer => layer.id);
+  const [layers, setLayers] = useState<Layer[]>(() => cloneLayers(initialLayerConfig.layers));
+  const [selectedLayerConfigId, setSelectedLayerConfigId] = useState(initialLayerConfig.id);
+  const selectedLayerConfig = layerConfigurations.find(cfg => cfg.id === selectedLayerConfigId)
+    ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
+    ?? layerConfigurations[0];
+  const interactiveLayerIds = layers
+    .filter(layer => selectedLayerConfig.interactive.includes(layer.id))
+    .map(layer => layer.id);
+  const prevLayerIdsRef = useRef<string[]>([]);
+
+  const applyLayerConfig = useCallback((configId: string, map?: maplibregl.Map | null) => {
+    const config = layerConfigurations.find(cfg => cfg.id === configId)
+      ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
+      ?? layerConfigurations[0];
+    const clonedLayers = cloneLayers(config.layers);
+    setSelectedLayerConfigId(config.id);
+    setLayers(clonedLayers);
+
+    if (!map) return;
+
+    prevLayerIdsRef.current.forEach(layerId => {
+      if (map.getLayer(layerId)) {
+        map.removeLayer(layerId);
+      }
+    });
+
+    clonedLayers.forEach(layer => registerLayerAsync(map, layer));
+    prevLayerIdsRef.current = clonedLayers.map(layer => layer.id);
+  }, []);
+
+  const handleLayerConfigChange = useCallback((configId: string) => {
+    applyLayerConfig(configId, mapRef.current?.getMap() ?? null);
+  }, [applyLayerConfig]);
+
+  useEffect(() => {
+    const targetPath = formatPathForLayerConfig(selectedLayerConfigId);
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState(null, '', `${targetPath}${window.location.search}${window.location.hash}`);
+    }
+  }, [selectedLayerConfigId]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const configIdFromPath = parseLayerConfigIdFromPath(layerConfigurations);
+      if (configIdFromPath !== selectedLayerConfigId) {
+        applyLayerConfig(configIdFromPath, mapRef.current?.getMap() ?? null);
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [applyLayerConfig, selectedLayerConfigId]);
 
   const handleLayerAdded = useCallback((layer: Layer) => {
     setLayers(prev => {
@@ -153,18 +261,15 @@ function App() {
     prevExpandedFeatureRef.current = expandedFeature;
   }, [expandedFeature]);
 
-  function initMap(map: maplibregl.Map) {
-    console.log("initMap");    
+  const initMap = useCallback((map: maplibregl.Map) => {
+    console.log("initMap");
 
     registerProtocols(ppsZoomLevels);
-
-    if (map) {
-      collapseAttributionControl(map);
-      initialSourceDef.forEach(source => registerSource(map, source));
-      initialLayerDef.forEach(layer => registerLayerAsync(map, layer));
-      setMapReady(true);
-    }
-  };
+    collapseAttributionControl(map);
+    initialSourceDef.forEach(source => registerSource(map, source));
+    applyLayerConfig(selectedLayerConfigId, map);
+    setMapReady(true);
+  }, [applyLayerConfig, selectedLayerConfigId]);
 
   useEffect(() => {
     const map = mapRef.current?.getMap();
@@ -194,8 +299,13 @@ function App() {
   const initialViewState = parseHashViewState() ?? defaultViewState;
 
   return (
-    <>
-      <main>
+    <div className="app-shell">
+      <AppBar
+        selectedLayerConfigId={selectedLayerConfigId}
+        layerConfigurations={layerConfigurations}
+        onLayerConfigChange={handleLayerConfigChange}
+      />
+      <main className="map-wrapper">
         <Map
           ref={mapRef}
           initialViewState={initialViewState}
@@ -205,18 +315,17 @@ function App() {
           cursor={hoveredFeature ? 'pointer' : 'default'} // Dynamic cursor
           onLoad={(e) => initMap(e.target)}
           attributionControl={false}
+          style={{ width: '100%', height: '100%' }}
           onClick={(e) => {
-            // Don't handle click if box select just completed
             if (boxSelectActive) {
               setBoxSelectActive(false);
               return;
             }
-            
+
             if (e.features && e.features.length > 0) {
-              // Deduplicate by feature ID
-              const uniqueFeatures = Array.from(new globalThis.Map(
-                e.features.map(f => [f.id, f])
-              ).values());
+              const uniqueFeatures = Array.from(
+                new globalThis.Map(e.features.map(f => [f.id, f])).values()
+              );
               const newFeatures = uniqueFeatures.map(f => new SelectedFeature(f, e.lngLat));
               setSelectedFeatures(newFeatures);
               console.log(`Features selected (${newFeatures.length}):`, newFeatures.map(sf => sf.feature.id));
@@ -225,15 +334,15 @@ function App() {
               console.log("Features deselected");
             }
           }}
-          onMouseEnter = {(e) => {
+          onMouseEnter={(e) => {
             if (e.features && e.features.length > 0) {
               setHoveredFeature(e.features[0]);
             } else {
-              setHoveredFeature(null)
+              setHoveredFeature(null);
             }
           }}
-          onMouseLeave = {() => {
-            setHoveredFeature(null)
+          onMouseLeave={() => {
+            setHoveredFeature(null);
           }}
         >
           <NavigationControl visualizePitch={true} visualizeRoll={true} showCompass={true} showZoom={true} />
@@ -248,22 +357,14 @@ function App() {
               }
             }}
           />
-          <SelectedFeaturesPanel 
-            selectedFeatures={selectedFeatures} 
-            onExpandedChange={setExpandedFeature}
-          />
-          <LayerControl
-            layers={layers}
-            onAddLayer={handleLayerAdded}
-            onRemoveLayer={handleLayerRemoved}
-            onLayerColorChange={handleLayerColorChange}
-          />
+          <SelectedFeaturesPanel selectedFeatures={selectedFeatures} onExpandedChange={setExpandedFeature}/>
+          <LayerControl layers={layers} onAddLayer={handleLayerAdded} onRemoveLayer={handleLayerRemoved} onLayerColorChange={handleLayerColorChange}/>
           <TagsFilter layerIds={interactiveLayerIds} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>
           <CoordinatesDisplay />
           <AttributionControl position="top-right" compact={true} />
         </Map>
       </main>
-    </>
+    </div>
   );
 }
 

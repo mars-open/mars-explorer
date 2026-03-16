@@ -5,80 +5,7 @@ import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
 import { ColorResult, SliderPicker } from 'react-color';
 import * as flatgeobuf from 'flatgeobuf';
-
-
-export interface Layer {
-  id: string;
-  name: string;
-  type: LayerType;
-  source: string;
-  sourceLayer?: string;
-  minzoom?: number;
-  maxzoom?: number;
-  color: LayerColor;
-  removable?: boolean;
-  active?: boolean;
-}
-
-type LayerType = 'circle' | 'line';
-
-type LayerColor =
-  | { color: string }
-  | { color: string; target: 'stroke' | 'fill' };
-
-const defaultLayerColor = (type: LayerType): LayerColor =>
-  type === 'circle'
-    ? { color: '#24c6c6', target: 'fill' }
-    : { color: '#24c6c6' };
-
-export function layerPaint(type: LayerType, color: LayerColor): any {
-  if (type === 'circle') {
-    if ((color as any).target === 'stroke') {
-      return {
-        "circle-radius": 4, 'circle-opacity': 0,
-        "circle-stroke-color": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-          ["boolean", ["feature-state", "selected"], false], "#ff8800",
-          color.color
-        ],
-        "circle-stroke-width": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], 2,
-          ["boolean", ["feature-state", "selected"], false], 2,
-          1
-        ]
-      };
-    } else {
-      return {
-        "circle-radius": 4, "circle-stroke-width": 0,
-        "circle-color": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-          ["boolean", ["feature-state", "selected"], false], "#ff8800",
-          color.color
-        ]      
-      }
-    }
-  } else if (type === 'line') {
-    return {
-      "line-color": [
-        "case",
-        ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-        ["boolean", ["feature-state", "selected"], false], "#ff8800",
-        color.color
-      ],
-      "line-width": [
-        "case",
-        ["boolean", ["feature-state", "expanded"], false], 2,
-        ["boolean", ["feature-state", "selected"], false], 2,
-        1
-      ],
-    }
-  } else {
-    return { 'line-color': color.color!, 'line-width': 1 };
-  }
-}  
+import { defaultLayerColor, getCircleColorTarget, Layer, LayerType, registerLayerAsync } from './mapHelpers';
 
 interface LayerControlProps {
   layers: Layer[];
@@ -100,21 +27,6 @@ interface LayerControlContentProps {
 function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onColorChange, activeLayerId}: LayerControlContentProps) {
   const [layerStates, setLayerStates] = useState<Record<string, boolean>>({});
   const [terrainEnabled, setTerrainEnabled] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!layers) return;
-    setLayerStates(prev => {
-      let changed = false;
-      const next = { ...prev };
-      layers.forEach(layer => {
-        if (!(layer.id in next)) {
-          next[layer.id] = true;
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [layers]);
 
   if (!map || !layers) return null;
 
@@ -261,13 +173,6 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     return 'line';
   }
 
-  function paintForType(type: LayerType) {
-    if (type === 'circle') {
-      return { 'circle-radius': 4, 'circle-stroke-width': 1 };
-    }
-    return { 'line-width': 2 };
-  }
-
   function buildLayerId(name: string) {
     const withoutExtension = name.replace(/\.[^.]+$/, '');
     const sanitized = withoutExtension
@@ -279,7 +184,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
 
   const paintProperty = (layer: Layer): 'circle-color' | 'circle-stroke-color' | 'line-color' => {
     if (layer.type === 'line') return 'line-color';
-    if (layer.type === 'circle') return (layer.color as any).target === 'fill' ? 'circle-color' : 'circle-stroke-color';
+    if (layer.type === 'circle') return getCircleColorTarget(layer.color) === 'fill' ? 'circle-color' : 'circle-stroke-color';
     return 'line-color';
   };
 
@@ -337,22 +242,9 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
               map.removeSource(layerId);
             }
             map.addSource(layerId, { type: 'geojson', data: geojson });
-            map.addLayer({
-              id: layerId,
-              type: (layerType as any),
-              source: layerId,
-              layout: { visibility: 'visible' },
-              paint: paintForType(layerType)
-            });
+            registerLayerAsync(map, { id: layerId, name: file.name, type: layerType, source: layerId, color: {color: 'green'}});
             const newLayerColor = defaultLayerColor(layerType);
-            onAddLayer({
-              id: layerId,
-              name: file.name,
-              type: layerType,
-              source: layerId,
-              color: newLayerColor,
-              removable: true
-            });
+            onAddLayer({ id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor, removable: true });
           } catch (error) {
             console.error('Failed to load FlatGeobuf file', error);
           }
@@ -415,7 +307,9 @@ export function LayerControl(props: LayerControlProps) {
           );
           return container;          
         }, 
-        onRemove: () => {}
+        onRemove: () => {
+          containerRef.current?.remove();
+        }
       };
     }, {
       position: props.position || 'top-right'

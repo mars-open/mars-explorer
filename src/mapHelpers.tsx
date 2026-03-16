@@ -1,8 +1,30 @@
 import maplibregl from "maplibre-gl";
 import * as pmtiles from "pmtiles";
 import * as flatgeobuf from "flatgeobuf";
-import { Layer } from "./LayerControl";
-import { layerPaint } from "./LayerControl";
+import type { Feature, FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
+
+export type SourceDefinition =
+  | {
+      id: string;
+      type: "vector";
+      tiles: string[];
+      promoteId?: string;
+      minzoom?: number;
+    }
+  | {
+      id: string;
+      type: "raster-dem";
+      tiles: string[];
+      encoding: "terrarium" | "mapbox" | "custom" | undefined;
+      tileSize: number;
+      attribution?: string;
+    }
+  | {
+      id: string;
+      type: "fgb";
+      data: string;
+      promoteId?: string;
+    };
 
 export function registerProtocols(ppsZoomLevels: number[]) {
   const ppsZoomLevelMin = Math.min(...ppsZoomLevels);
@@ -26,7 +48,7 @@ export function registerProtocols(ppsZoomLevels: number[]) {
     const pattern = /pps:\/\/(.*)\/(\d*)\/(\d*)\/(\d*)/;
     const match = params.url.match(pattern);
     if (match) {
-      const [_, url, z, x, y] = match;
+      const [, url, z, x, y] = match;
       if (+z < ppsZoomLevelMin) return { data: new Uint8Array(0) }; // No tiles below min zoom
       if (ppsZoomLevels.includes(+z)) {
         const newUrl = `pmtiles://${url}/${z}/${x}/${y}.mvt`;
@@ -50,20 +72,98 @@ export function registerProtocols(ppsZoomLevels: number[]) {
   };
 }
 
-async function loadFlatGeobufGeoJSON(url: string) {
+
+export interface Layer {
+  id: string;
+  name: string;
+  type: LayerType;
+  source: string;
+  sourceLayer?: string;
+  minzoom?: number;
+  maxzoom?: number;
+  color: LayerColor;
+  removable?: boolean;
+  active?: boolean;
+}
+
+export type LayerType = 'circle' | 'line';
+
+export type LayerColor =
+  | { color: string }
+  | { color: string; target: 'stroke' | 'fill' };
+
+export const getCircleColorTarget = (color: LayerColor): 'stroke' | 'fill' =>
+  'target' in color ? color.target : 'fill';
+
+export const defaultLayerColor = (type: LayerType): LayerColor =>
+  type === 'circle'
+    ? { color: '#24c6c6', target: 'fill' }
+    : { color: '#24c6c6' };
+
+export function layerPaint(type: LayerType, color: LayerColor): Record<string, unknown> {
+  if (type === 'circle') {
+    if (getCircleColorTarget(color) === 'stroke') {
+      return {
+        "circle-radius": 4, 'circle-opacity': 0,
+        "circle-stroke-color": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+          ["boolean", ["feature-state", "selected"], false], "#ff8800",
+          color.color
+        ],
+        "circle-stroke-width": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], 2,
+          ["boolean", ["feature-state", "selected"], false], 2,
+          1
+        ]
+      };
+    } else {
+      return {
+        "circle-radius": 4, "circle-stroke-width": 0,
+        "circle-color": [
+          "case",
+          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+          ["boolean", ["feature-state", "selected"], false], "#ff8800",
+          color.color
+        ]      
+      }
+    }
+  } else if (type === 'line') {
+    return {
+      "line-color": [
+        "case",
+        ["boolean", ["feature-state", "expanded"], false], "#ffff00",
+        ["boolean", ["feature-state", "selected"], false], "#ff8800",
+        color.color
+      ],
+      "line-width": [
+        "case",
+        ["boolean", ["feature-state", "expanded"], false], 2,
+        ["boolean", ["feature-state", "selected"], false], 2,
+        1
+      ],
+    }
+  } else {
+    return { 'line-color': color.color!, 'line-width': 1 };
+  }
+}  
+
+async function loadFlatGeobufGeoJSON(url: string): Promise<FeatureCollection> {
   const response = await fetch(url);
   const arrayBuffer = await response.arrayBuffer();
-  const features = [];
+  const features: Feature<Geometry, GeoJsonProperties>[] = [];
   for await (const feature of flatgeobuf.geojson.deserialize(new Uint8Array(arrayBuffer))) {
+    const parsedFeature = feature as Feature<Geometry, GeoJsonProperties>;
     // parse tags property into array
-    if (feature.properties?.tags && typeof feature.properties.tags === 'string' && feature.properties.tags.startsWith('["')) {
+    if (parsedFeature.properties?.tags && typeof parsedFeature.properties.tags === 'string' && parsedFeature.properties.tags.startsWith('["')) {
       try {
-        feature.properties.tags = JSON.parse(feature.properties.tags);
+        parsedFeature.properties.tags = JSON.parse(parsedFeature.properties.tags);
       } catch {
         // Ignore JSON parse errors
       }
     }
-    features.push(feature);
+    features.push(parsedFeature);
   }
   return {
     type: 'FeatureCollection' as const,
@@ -71,8 +171,8 @@ async function loadFlatGeobufGeoJSON(url: string) {
   };
 }
 
-const sources: Record<string,any> = {}; // Keep track of registered sources for cleanup if needed
-export function registerSource(map: maplibregl.Map, source: any) {
+const sources: Record<string, true | Promise<void>> = {}; // Keep track of registered sources for cleanup if needed
+export function registerSource(map: maplibregl.Map, source: SourceDefinition) {
   if (source.type === 'vector') {
     map.addSource(source.id, {type: 'vector', tiles: source.tiles, promoteId: source.promoteId, minzoom: source.minzoom });
     sources[source.id] = true;
@@ -82,16 +182,16 @@ export function registerSource(map: maplibregl.Map, source: any) {
   } else if (source.type === 'fgb') {
     console.log(`Loading ${source.id}`);      
     sources[source.id] = loadFlatGeobufGeoJSON(source.data)
-      .then((geojson: any) => {
+      .then((geojson) => {
         map.addSource(source.id, {type: 'geojson', data: geojson, promoteId: source.promoteId });
         sources[source.id] = true;
       });
-  } else throw new Error(`Unsupported source type for ${source.id}: ${source.type}`);
+  }
 }
 
 export function registerLayerAsync(map: maplibregl.Map, layer: Layer) {
   if (sources[layer.source] === true) registerLayer(map, layer);
-  else if (sources[layer.source] instanceof Promise) sources[layer.source].then(() => registerLayer(map, layer));
+  else if (sources[layer.source] instanceof Promise) (sources[layer.source] as Promise<void>).then(() => registerLayer(map, layer));
   else throw new Error(`Source not found for ${layer.id}: ${layer.source}`);
 }
 
@@ -100,7 +200,6 @@ function registerLayer(map: maplibregl.Map, layer: Layer) {
   else if (layer.type === 'line') map.addLayer({id: layer.id, type: 'line', source: layer.source, ...(layer.sourceLayer && {'source-layer': layer.sourceLayer}), ...(layer.minzoom && {minzoom: layer.minzoom}), ...(layer.maxzoom && {maxzoom: layer.maxzoom}), paint: layerPaint(layer.type, layer.color)});
   else throw new Error(`Unsupported layer type for ${layer.id}: ${layer.type}`);
 }
-
 
 export const collapseAttributionControl = (map: maplibregl.Map) => {
   const container = map.getContainer().querySelector<HTMLElement>(".maplibregl-ctrl-attrib");
