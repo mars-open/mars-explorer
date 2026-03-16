@@ -27,6 +27,10 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
 
   const [tagConfig, setTagConfig] = useState<Record<string, {selected: boolean; mode: 'include' | 'exclude'}>>(() => buildTagConfig(possibleTags));
 
+  useEffect(() => {
+    setTagConfig(buildTagConfig(possibleTags));
+  }, [possibleTags]);
+
   function toggleTag(tag: string) {
     if (!map) return;
     setTagConfig(prev => ({
@@ -53,6 +57,7 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
 
     // Apply filter to all layers
     layerIds.forEach(layerId => {
+      if (!map.getLayer(layerId)) return;
       if (includedTags.length === 0) {
         // Show all if no tags selected
         map.setFilter(layerId, null);
@@ -141,26 +146,26 @@ function TagsFilterControl({ layerIds, possibleTags, position }: TagsFilterProps
   const rootRef = useRef<ReturnType<typeof createRoot> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { current: map } = useMap();
+  const hasTags = possibleTags.length > 0;
 
   useControl(() => {
 
-    
-    // Defer initial render to avoid React warning
-    setTimeout(() => {
-    }, 0);
-    
     return { 
       onAdd: (map) => {
         const container = document.createElement('div');
         containerRef.current = container;
         container.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+        container.style.display = hasTags ? '' : 'none';
         const root = createRoot(container);
         rootRef.current = root;        
         root.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map} />);
         return container;
       }, 
       onRemove: () => {
+        rootRef.current?.unmount();
+        rootRef.current = null;
         containerRef.current?.remove();
+        containerRef.current = null;
       }
     };
   }, {
@@ -169,10 +174,13 @@ function TagsFilterControl({ layerIds, possibleTags, position }: TagsFilterProps
 
   useEffect(() => {
     if (!map) return;
+    if (containerRef.current) {
+      containerRef.current.style.display = hasTags ? '' : 'none';
+    }
     if (rootRef.current && containerRef.current?.parentElement) {
       rootRef.current.render(<TagsFilterWrapper layerIds={layerIds} possibleTags={possibleTags} map={map.getMap()!} />);
     }
-  }, [layerIds, possibleTags, map]);
+  }, [hasTags, layerIds, possibleTags, map]);
 
   return null;
 }

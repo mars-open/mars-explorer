@@ -11,5 +11,6 @@ export interface LayerConfiguration {
   description?: string;
   layers: Layer[];
   interactive: string[];
+  filterableTags?: string[];
   colorOverrides?: Record<string, LayerColorOverride>;
 }

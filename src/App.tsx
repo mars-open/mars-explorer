@@ -12,7 +12,7 @@ import maplibregl from "maplibre-gl";
 import { collapseAttributionControl, Layer, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
 import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
-import { importGbmZipAsLayer } from "./GBMSource";
+import { importGbmZipAsLayer } from "./gbm";
 
 
 // constants
@@ -66,7 +66,8 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       label: 'Switzerland TLM3D',
       description: 'Positionpoints of Switzerland, based on Swisstopo TLM3D data.',
       layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']],
-      interactive: ['pps', 'edges', 'nodes', 'lines']
+      interactive: ['pps', 'edges', 'nodes', 'lines'],
+      filterableTags: ['Normalspur', 'Schmalspur', 'Tram']
     },
     {
       id: 'gbm',
@@ -74,6 +75,7 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       description: 'Load and analyze GBM files',
       layers: [layerMap['edges'], layerMap['lines']],
       interactive: ['lines', 'gbm-points'],
+      filterableTags: [],
       colorOverrides: {
         edges: { color: 'rgb(100, 100, 100)' },
       }
@@ -151,7 +153,8 @@ function App() {
 
     if (!map) return;
 
-    prevLayerIdsRef.current.forEach(layerId => {
+    const layerIdsToRemove = new Set([...prevLayerIdsRef.current, ...layers.map(layer => layer.id)]);
+    layerIdsToRemove.forEach(layerId => {
       if (map.getLayer(layerId)) {
         map.removeLayer(layerId);
       }
@@ -159,7 +162,7 @@ function App() {
 
     clonedLayers.forEach(layer => registerLayerAsync(map, layer));
     prevLayerIdsRef.current = clonedLayers.map(layer => layer.id);
-  }, []);
+  }, [layers]);
 
   const handleLayerConfigChange = useCallback((configId: string) => {
     applyLayerConfig(configId, mapRef.current?.getMap() ?? null);
@@ -407,7 +410,7 @@ function App() {
           />
           <SelectedFeaturesPanel selectedFeatures={selectedFeatures} onExpandedChange={setExpandedFeature}/>
           <LayerControl layers={layers} onAddLayer={handleLayerAdded} onRemoveLayer={handleLayerRemoved} onLayerColorChange={handleLayerColorChange}/>
-          <TagsFilter layerIds={interactiveLayerIds} possibleTags={['Normalspur', 'Schmalspur', 'Tram']} position="top-right"/>
+          <TagsFilter layerIds={interactiveLayerIds} possibleTags={selectedLayerConfig.filterableTags ?? []} position="top-right"/>
           <CoordinatesDisplay />
           <AttributionControl position="top-right" compact={true} />
         </Map>

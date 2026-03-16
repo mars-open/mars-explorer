@@ -113,9 +113,12 @@ export async function importGbmZipAsLayer(
     type: 'FeatureCollection',
     features: featuresWithGeom
   }
-  if (map.getSource(layerId)) {   
-    const source = map.getSource(layerId) as maplibregl.GeoJSONSource; 
+  if (map.getSource(layerId)) {
+    const source = map.getSource(layerId) as maplibregl.GeoJSONSource;
     source.setData(geojson);
+    if (!map.getLayer(layerId)) {
+      registerLayerAsync(map, layerDefinition);
+    }
   } else {
     registerSource(map, {id: layerId, type: 'geojson', data: geojson, promoteId: 'id_positionpoint' });
     registerLayerAsync(map, layerDefinition);
