@@ -3,8 +3,9 @@ import type { FeatureCollection } from 'geojson';
 import maplibregl, { ControlPosition } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
-import { ColorResult, SliderPicker } from 'react-color';
+import { Checkbox, ColorArea, ColorField, ColorPicker, ColorSlider, ColorThumb, Input, SliderTrack, Switch, parseColor } from 'react-aria-components';
 import * as flatgeobuf from 'flatgeobuf';
+import './LayerControl.css';
 import {
   defaultLayerColor,
   getCircleColorTarget,
@@ -37,7 +38,7 @@ interface LayerControlContentProps {
   map: maplibregl.Map | null;
   onRemoveLayer: (id: string) => void;
   onConfigureLayer: (layerId: string) => void;
-  onColorChange: (layerId: string, color: ColorResult) => void;
+  onColorChange: (layerId: string, colorHex: string) => void;
   onColorModeChange: (layerId: string, mode: 'fixed' | 'gradient') => void;
   onGradientAttributeChange: (layerId: string, attribute: string) => void;
   onGradientScaleChange: (layerId: string, scale: GradientScaleId) => void;
@@ -91,30 +92,32 @@ function LayerControlContent({
 
   return (
 
-    <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
+    <div className="layer-control-content" style={{display: "flex", flexDirection: "column", margin: 5 }}>
       {layers.map(layer => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} key={layer.id}>
           <div className="items-center cursor-pointer mb-1" 
             style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
           >
-            <label key={layer.id} className="flex items-center cursor-pointer mb-1 block" 
-              style={{ flex: 1, display: 'flex', height: 22, alignItems: 'center', lineHeight: '26px'}}>
-              <input
-                id={`layer-${layer.id}`} type="checkbox"
-                checked={layerStates[layer.id] ?? true}
-                onChange={() => toggleLayer(layer.id)}
-                className="tags-filter-checkbox"
-                style={{ marginRight: 8 }}
-              />
-              {layer.name}
-            </label>
+            <Checkbox
+              key={layer.id}
+              className="layer-control-layer-checkbox"
+              isSelected={layerStates[layer.id] ?? true}
+              onChange={() => toggleLayer(layer.id)}
+            >
+              {({ isSelected }) => (
+                <>
+                  <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+                  <span>{layer.name}</span>
+                </>
+              )}
+            </Checkbox>
             {layer.removable && (
               <button
                 type="button"
                 className="maplibregl-ctrl-icon"
                 title="Remove custom layer"
                 onClick={() => onRemoveLayer(layer.id)}
-                style={{ width: 20, height: 22, lineHeight: '22px', padding: 0, fontSize: '0.7rem' }}
+                style={{ width: 20, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               >
                 −
               </button>
@@ -125,33 +128,61 @@ function LayerControlContent({
                 className="maplibregl-ctrl-icon"
                 title="Configure layer"
                 onClick={() => onConfigureLayer(layer.id)}
-                style={{ width: 28, height: 22, lineHeight: '22px', padding: 0, fontSize: '0.7rem' }}
+                style={{ width: 28, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               >
                 ⚙
               </button>
             )}
           </div>
           {activeLayerId === layer.id && (
-            <div style={{ padding: '1px 6px 8px 6px', borderBottom: '1px solid rgba(0,0,0,0.12)', background: 'white' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-                  Color mode
-                  <select
-                    value={isGradientLayerColor(layer.color) ? 'gradient' : 'fixed'}
-                    onChange={(event) => onColorModeChange(layer.id, event.target.value as 'fixed' | 'gradient')}
+            <div className="layer-control-panel">
+              <div className="layer-control-panel-stack">
+                <div className="layer-control-switch-row">
+                  <Switch
+                    aria-label="Color mode"
+                    className="layer-control-switch"
+                    isSelected={isGradientLayerColor(layer.color)}
+                    onChange={(selected) => onColorModeChange(layer.id, selected ? 'gradient' : 'fixed')}
                   >
-                    <option value="fixed">Fixed</option>
-                    <option value="gradient">Gradient</option>
-                  </select>
-                </label>
+                    {({ isSelected }) => (
+                      <span className="layer-control-mode-toggle" data-selected={isSelected ? 'true' : 'false'}>
+                        <span className={`layer-control-mode-label${!isSelected ? ' layer-control-mode-label-active' : ''}`}>Fixed color</span>
+                        <span className="layer-control-switch-indicator">
+                          <span className="layer-control-switch-thumb" />
+                        </span>
+                        <span className={`layer-control-mode-label${isSelected ? ' layer-control-mode-label-active' : ''}`}>Gradient color</span>
+                      </span>
+                    )}
+                  </Switch>
+                </div>
                 {!isGradientLayerColor(layer.color) && (
-                  <SliderPicker key={layer.id} color={layer.color.color} onChange={(colorResult: ColorResult) => onColorChange(layer.id, colorResult)} />
+                  <div className="layer-control-color-picker">
+                    <ColorPicker
+                      value={parseColor(layer.color.color).toFormat('hsb')}
+                      onChange={(color) => onColorChange(layer.id, color.toString('hex'))}
+                    >
+                      <div className="layer-control-color-grid">
+                        <ColorArea className="layer-control-color-area" colorSpace="hsb" xChannel="saturation" yChannel="brightness">
+                          <ColorThumb className="layer-control-color-thumb" />
+                        </ColorArea>
+                        <ColorSlider className="layer-control-hue-slider" channel="hue">
+                          <SliderTrack className="layer-control-hue-track">
+                            <ColorThumb className="layer-control-hue-thumb" />
+                          </SliderTrack>
+                        </ColorSlider>
+                      </div>
+                      <ColorField className="layer-control-color-field">
+                        <Input className="layer-control-color-input" />
+                      </ColorField>
+                    </ColorPicker>
+                  </div>
                 )}
                 {isGradientLayerColor(layer.color) && (
                   <>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-                      Numeric attribute
+                    <label className="layer-control-field">
+                      <span className="layer-control-label">Numeric attribute</span>
                       <select
+                        className="layer-control-select"
                         value={layer.color.attribute}
                         onChange={(event) => onGradientAttributeChange(layer.id, event.target.value)}
                       >
@@ -160,24 +191,32 @@ function LayerControlContent({
                         ))}
                       </select>
                     </label>
-                    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-                      Color scale
-                      <select
-                        value={layer.color.scale}
-                        onChange={(event) => onGradientScaleChange(layer.id, event.target.value as GradientScaleId)}
-                      >
-                        <option value="green-orange-red">Green to Orange to Red</option>
-                        <option value="white-blue">White to Blue</option>
-                      </select>
-                    </label>
-                    <div style={{ fontSize: 11, color: '#5b5b5b' }}>
+                    <div className="layer-control-field">
+                      <span className="layer-control-label">Color scale</span>
+                      <div className="layer-control-scale-list">
+                        {(Object.entries(gradientScales) as [GradientScaleId, string[]][]).map(([scaleId, colors]) => (
+                          <button
+                            key={scaleId}
+                            type="button"
+                            onClick={() => onGradientScaleChange(layer.id, scaleId)}
+                            title={scaleId}
+                            className={`layer-control-scale-button${isGradientLayerColor(layer.color) && layer.color.scale === scaleId ? ' layer-control-scale-button-active' : ''}`}
+                          >
+                            <span
+                              className="layer-control-scale-gradient"
+                              style={{ background: `linear-gradient(to right, ${colors.join(', ')})` }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="layer-control-range">
                       Range: {layer.color.min} - {layer.color.max}
                     </div>
-                    <div style={{ display: 'flex', gap: 2, height: 10 }}>
-                      {gradientScales[layer.color.scale].map(scaleColor => (
-                        <div key={scaleColor} style={{ flex: 1, background: scaleColor }} />
-                      ))}
-                    </div>
+                    <div
+                      className="layer-control-current-scale"
+                      style={{ background: `linear-gradient(to right, ${gradientScales[layer.color.scale].join(', ')})` }}
+                    />
                   </>
                 )}
               </div>
@@ -270,12 +309,10 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
 
   const applyLayerColor = (layer: Layer, color: LayerColor) => {
     if (!map) return;
-    const currentProp = paintProperty(layer, layer.color);
     const nextProp = paintProperty(layer, color);
-    if (currentProp !== nextProp) {
-      map.setPaintProperty(layer.id, currentProp, 'rgba(0,0,0,0)');
-    }
-    map.setPaintProperty(layer.id, nextProp, selectedAwareLayerColorExpression(color));
+    const expr = selectedAwareLayerColorExpression(color);
+    console.log(`Applying color to layer ${layer.id} with paint property ${nextProp}`, color, expr);
+    map.setPaintProperty(layer.id, nextProp, expr);
     onLayerColorChange(layer.id, color);
   };
 
@@ -367,10 +404,10 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     setActiveLayerId(prev => prev === layerId ? undefined : layerId);
   };
 
-  const handleColorChange = (layerId: string, colorResult: ColorResult) => {
+  const handleColorChange = (layerId: string, colorHex: string) => {
     const layer = getLayerById(layerId);
     if (!layer) return;
-    applyLayerColor(layer, { ...layer.color, mode: 'fixed', color: colorResult.hex });
+    applyLayerColor(layer, { ...layer.color, mode: 'fixed', color: colorHex });
   };
 
   const handleColorModeChange = (layerId: string, mode: 'fixed' | 'gradient') => {
@@ -441,7 +478,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
   };
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', minWidth: 175}}>
+    <div style={{display: 'flex', flexDirection: 'column', minWidth: 250}}>
       <input
         ref={fileInputRef}
         type="file"
