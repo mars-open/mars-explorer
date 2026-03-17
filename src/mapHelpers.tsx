@@ -94,29 +94,118 @@ export interface Layer {
 
 export type LayerType = 'circle' | 'line';
 
-export type LayerColor =
-  | { color: string }
-  | { color: string; target: 'stroke' | 'fill' };
+export type GradientScaleId = 'green-orange-red' | 'white-blue';
+
+export const gradientScales: Record<GradientScaleId, string[]> = {
+  'green-orange-red': ['#1a9850', '#fdae61', '#d73027'],
+  'white-blue': ['#ffffff', '#0571b0']
+};
+
+export type LayerColorFixed = {
+  mode?: 'fixed';
+  color: string;
+  target?: 'stroke' | 'fill';
+};
+
+export type LayerColorGradient = {
+  mode: 'gradient';
+  attribute: string;
+  scale: GradientScaleId;
+  min: number;
+  max: number;
+  target?: 'stroke' | 'fill';
+};
+
+export type LayerColor = LayerColorFixed | LayerColorGradient;
+
+export const isGradientLayerColor = (color: LayerColor): color is LayerColorGradient =>
+  color.mode === 'gradient';
 
 export const getCircleColorTarget = (color: LayerColor): 'stroke' | 'fill' =>
-  'target' in color ? color.target : 'fill';
+  'target' in color ? color.target! : 'fill';
 
 export const defaultLayerColor = (type: LayerType): LayerColor =>
   type === 'circle'
-    ? { color: '#24c6c6', target: 'fill' }
-    : { color: '#24c6c6' };
+    ? { mode: 'fixed', color: '#24c6c6', target: 'fill' }
+    : { mode: 'fixed', color: '#24c6c6' };
+
+function gradientExpression(color: LayerColorGradient): unknown {
+  const min = Number(color.min);
+  const max = Number(color.max);
+  const isRangeValid = Number.isFinite(min) && Number.isFinite(max) && min < max;
+  const scale = gradientScales[color.scale];
+
+  if (!isRangeValid || !scale?.length || !color.attribute) return '#888888';
+
+  if (scale.length === 1) return scale[0];
+
+  const toNumberInput = (() => {
+    const buildSafeNestedGetter = (segments: string[]): unknown => {
+      const build = (idx: number, parentExpression?: unknown): unknown => {
+        const key = segments[idx];
+        const getExpression = parentExpression ? ['get', key, parentExpression] : ['get', key];
+
+        if (!parentExpression) {
+          if (idx === segments.length - 1) {
+            return ['case', ['has', key], getExpression, null];
+          }
+          return ['case', ['has', key], build(idx + 1, getExpression), null];
+        }
+
+        const parentIsObject = ['==', ['typeof', parentExpression], 'object'];
+        const hasOnParent = ['has', key, parentExpression];
+
+        if (idx === segments.length - 1) {
+          return ['case', parentIsObject, ['case', hasOnParent, getExpression, null], null];
+        }
+
+        return ['case', parentIsObject, ['case', hasOnParent, build(idx + 1, getExpression), null], null];
+      };
+
+      return build(0);
+    };
+
+    const segments = color.attribute.split('.').filter(Boolean);
+    if (segments.length <= 1) {
+      return ['get', color.attribute];
+    } else {
+      return buildSafeNestedGetter(segments);
+    }
+  })();
+
+  const expression: unknown[] = [
+    'interpolate',
+    ['linear'],
+    ['to-number', toNumberInput, min]
+  ];
+
+  const lastIdx = scale.length - 1;
+  scale.forEach((scaleColor, idx) => {
+    const stop = min + ((max - min) * idx) / lastIdx;
+    expression.push(stop, scaleColor);
+  });
+
+  return expression;
+}
+
+export const layerColorExpression = (color: LayerColor): unknown => {
+  if (isGradientLayerColor(color)) return gradientExpression(color);
+  return color.color;
+};
+
+export const selectedAwareLayerColorExpression = (color: LayerColor): unknown[] => [
+  'case',
+  ['boolean', ['feature-state', 'expanded'], false], '#ffff00',
+  ['boolean', ['feature-state', 'selected'], false], '#ff8800',
+  layerColorExpression(color)
+];
 
 export function layerPaint(type: LayerType, color: LayerColor): Record<string, unknown> {
   if (type === 'circle') {
     if (getCircleColorTarget(color) === 'stroke') {
       return {
         "circle-radius": 4, 'circle-opacity': 0,
-        "circle-stroke-color": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-          ["boolean", ["feature-state", "selected"], false], "#ff8800",
-          color.color
-        ],
+        "circle-stroke-color": selectedAwareLayerColorExpression(color),
         "circle-stroke-width": [
           "case",
           ["boolean", ["feature-state", "expanded"], false], 2,
@@ -127,22 +216,12 @@ export function layerPaint(type: LayerType, color: LayerColor): Record<string, u
     } else {
       return {
         "circle-radius": 4, "circle-stroke-width": 0,
-        "circle-color": [
-          "case",
-          ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-          ["boolean", ["feature-state", "selected"], false], "#ff8800",
-          color.color
-        ]      
+        "circle-color": selectedAwareLayerColorExpression(color)
       }
     }
   } else if (type === 'line') {
     return {
-      "line-color": [
-        "case",
-        ["boolean", ["feature-state", "expanded"], false], "#ffff00",
-        ["boolean", ["feature-state", "selected"], false], "#ff8800",
-        color.color
-      ],
+      "line-color": selectedAwareLayerColorExpression(color),
       "line-width": [
         "case",
         ["boolean", ["feature-state", "expanded"], false], 2,
@@ -151,7 +230,7 @@ export function layerPaint(type: LayerType, color: LayerColor): Record<string, u
       ],
     }
   } else {
-    return { 'line-color': color.color!, 'line-width': 1 };
+    return { 'line-color': layerColorExpression(color), 'line-width': 1 };
   }
 }  
 

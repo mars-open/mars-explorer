@@ -99,7 +99,7 @@ export async function importGbmZipAsLayer(
   if (!features.length) throw new Error('No GBM points loaded.');
   const featuresWithGeom = features.filter(f => f.geometry !== null) as Feature<Point>[];
   const featuresWithoutGeom = features.filter(f => f.geometry === null);
-  console.log(`Found ${featuresWithGeom.length} GBM points with valid geometry, and ${featuresWithoutGeom.length} without geometry)`);
+  console.log(`Found ${featuresWithGeom.length} GBM points with valid geometry, and ${featuresWithoutGeom.length} without geometry.`);
   if (!featuresWithGeom.length) throw new Error('No GBM points with valid geometry loaded.');
 
   const layerId = 'gbm-points';

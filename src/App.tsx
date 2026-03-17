@@ -9,7 +9,7 @@ import { CoordinatesDisplay } from "./CoordinatesDisplay";
 import { SelectedFeaturesPanel, SelectedFeature } from "./SelectedFeaturesPanel";
 import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
-import { collapseAttributionControl, Layer, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
+import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
 import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
 import { importGbmZipAsLayer } from "./gbm";
@@ -48,10 +48,10 @@ const initialSourceDef: SourceDefinition[] = [
   {id: 'pmt-3d', type: 'raster-dem', tiles: ['mapterhorn://{z}/{x}/{y}'], encoding: 'terrarium', tileSize: 512, attribution: '<a href="https://mapterhorn.com/attribution">© Mapterhorn</a>'}
 ]
 const initialLayerDef: Layer[] = [
-  {id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { color: '#ff0000', target: 'fill' }}, 
-  {id: "edges", name: "Tlm3d Kanten", type: 'line', source: 'edges-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0' }},
-  {id: "nodes", name: "Tlm3d Knoten", type: 'circle', source: 'nodes-fgb', minzoom: edgesZoomLevelMin, color: { color: '#0000f0', target: 'stroke' }},
-  {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', minzoom: 5, maxzoom: edgesZoomLevelMin, color: { color: "rgb(100, 100, 100)" }}
+  {id: "pps", name: "Positionspunkte", type: 'circle', source: 'pps', sourceLayer: 'pps', minzoom: ppsZoomLevelMin, color: { mode: 'fixed', color: '#ff0000', target: 'fill' }}, 
+  {id: "edges", name: "Tlm3d Kanten", type: 'line', source: 'edges-fgb', minzoom: edgesZoomLevelMin, color: { mode: 'fixed', color: '#0000f0' }},
+  {id: "nodes", name: "Tlm3d Knoten", type: 'circle', source: 'nodes-fgb', minzoom: edgesZoomLevelMin, color: { mode: 'fixed', color: '#0000f0', target: 'stroke' }},
+  {id: 'lines', name: "Lines", type: 'line', source: 'lines-fgb', minzoom: 5, maxzoom: edgesZoomLevelMin, color: { mode: 'fixed', color: "rgb(100, 100, 100)" }}
 ]
 
 const layerConfigurations: LayerConfiguration[] = (() => {
@@ -77,7 +77,7 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       interactive: ['lines', 'gbm-points'],
       filterableTags: [],
       colorOverrides: {
-        edges: { color: 'rgb(100, 100, 100)' },
+        edges: { color: { mode: 'fixed', color: 'rgb(100, 100, 100)' } },
       }
     }
   ];
@@ -91,7 +91,8 @@ const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer 
   return {
     ...layer,
     color: {
-      color: override.color
+      ...override.color,
+      ...('target' in layer.color ? { target: layer.color.target } : {})
     }
   };
 };
@@ -202,11 +203,11 @@ function App() {
     setLayers(prev => prev.filter(layer => layer.id !== layerId));
   }, []);
 
-  const handleLayerColorChange = useCallback((layerId: string, color: string) => {
+  const handleLayerColorChange = useCallback((layerId: string, color: LayerColor) => {
     setLayers(prev =>
       prev.map(layer =>
         layer.id === layerId
-          ? { ...layer, color: { ...layer.color, color } }
+          ? { ...layer, color }
           : layer
       )
     );
@@ -237,7 +238,8 @@ function App() {
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
   const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: string | number) => {
     if (!layerId) return null;
-    const layer = map.getLayer(layerId)!;
+    const layer = map.getLayer(layerId);
+    if (!layer) return null;
     const sourceId = layer.source as string;
     const source = map.getSource(sourceId);
     // Vector tile sources need sourceLayer, GeoJSON sources don't
@@ -264,7 +266,7 @@ function App() {
       selectedFeatures.forEach(sf => {
         const identifier = getFeatureIdentifier(map, sf.feature.layer?.id, sf.feature.id!);
         if (identifier) {
-          map.removeFeatureState(identifier);
+          map.setFeatureState(identifier, { selected: false });
         }
       });
     };

@@ -5,14 +5,31 @@ import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
 import { ColorResult, SliderPicker } from 'react-color';
 import * as flatgeobuf from 'flatgeobuf';
-import { defaultLayerColor, getCircleColorTarget, Layer, LayerType, registerLayerAsync } from './mapHelpers';
+import {
+  defaultLayerColor,
+  getCircleColorTarget,
+  gradientScales,
+  isGradientLayerColor,
+  Layer,
+  LayerColor,
+  LayerType,
+  registerLayerAsync,
+  selectedAwareLayerColorExpression,
+  type GradientScaleId
+} from './mapHelpers';
+
+interface NumericAttributeStats {
+  attribute: string;
+  min: number;
+  max: number;
+}
 
 interface LayerControlProps {
   layers: Layer[];
   position?: ControlPosition;
   onAddLayer: (layer: Layer) => void;
   onRemoveLayer: (layerId: string) => void;
-  onLayerColorChange: (layerId: string, color: string) => void;
+  onLayerColorChange: (layerId: string, color: LayerColor) => void;
 }
 
 interface LayerControlContentProps {
@@ -21,10 +38,25 @@ interface LayerControlContentProps {
   onRemoveLayer: (id: string) => void;
   onConfigureLayer: (layerId: string) => void;
   onColorChange: (layerId: string, color: ColorResult) => void;
+  onColorModeChange: (layerId: string, mode: 'fixed' | 'gradient') => void;
+  onGradientAttributeChange: (layerId: string, attribute: string) => void;
+  onGradientScaleChange: (layerId: string, scale: GradientScaleId) => void;
+  attributeStatsByLayer: Record<string, NumericAttributeStats[]>;
   activeLayerId: string | undefined;
 }
 
-function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onColorChange, activeLayerId}: LayerControlContentProps) {
+function LayerControlContent({
+  layers,
+  map,
+  onRemoveLayer,
+  onConfigureLayer,
+  onColorChange,
+  onColorModeChange,
+  onGradientAttributeChange,
+  onGradientScaleChange,
+  attributeStatsByLayer,
+  activeLayerId
+}: LayerControlContentProps) {
   const [layerStates, setLayerStates] = useState<Record<string, boolean>>({});
   const [terrainEnabled, setTerrainEnabled] = useState<boolean>(false);
 
@@ -101,7 +133,54 @@ function LayerControlContent({layers, map, onRemoveLayer, onConfigureLayer, onCo
           </div>
           {activeLayerId === layer.id && (
             <div style={{ padding: '1px 6px 8px 6px', borderBottom: '1px solid rgba(0,0,0,0.12)', background: 'white' }}>
-              <SliderPicker key={layer.id} color={layer.color.color} onChange={(colorResult: ColorResult) => onColorChange(layer.id, colorResult)} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+                  Color mode
+                  <select
+                    value={isGradientLayerColor(layer.color) ? 'gradient' : 'fixed'}
+                    onChange={(event) => onColorModeChange(layer.id, event.target.value as 'fixed' | 'gradient')}
+                  >
+                    <option value="fixed">Fixed</option>
+                    <option value="gradient">Gradient</option>
+                  </select>
+                </label>
+                {!isGradientLayerColor(layer.color) && (
+                  <SliderPicker key={layer.id} color={layer.color.color} onChange={(colorResult: ColorResult) => onColorChange(layer.id, colorResult)} />
+                )}
+                {isGradientLayerColor(layer.color) && (
+                  <>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+                      Numeric attribute
+                      <select
+                        value={layer.color.attribute}
+                        onChange={(event) => onGradientAttributeChange(layer.id, event.target.value)}
+                      >
+                        {(attributeStatsByLayer[layer.id] ?? []).map(stat => (
+                          <option value={stat.attribute} key={stat.attribute}>{stat.attribute}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+                      Color scale
+                      <select
+                        value={layer.color.scale}
+                        onChange={(event) => onGradientScaleChange(layer.id, event.target.value as GradientScaleId)}
+                      >
+                        <option value="green-orange-red">Green to Orange to Red</option>
+                        <option value="white-blue">White to Blue</option>
+                      </select>
+                    </label>
+                    <div style={{ fontSize: 11, color: '#5b5b5b' }}>
+                      Range: {layer.color.min} - {layer.color.max}
+                    </div>
+                    <div style={{ display: 'flex', gap: 2, height: 10 }}>
+                      {gradientScales[layer.color.scale].map(scaleColor => (
+                        <div key={scaleColor} style={{ flex: 1, background: scaleColor }} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -128,12 +207,13 @@ interface LayerControlWrapperProps {
   map: maplibregl.Map | null;
   onAddLayer: (layer: Layer) => void;
   onRemoveLayer: (layerId: string) => void;
-  onLayerColorChange: (layerId: string, color: string) => void;
+  onLayerColorChange: (layerId: string, color: LayerColor) => void;
 }
 
 function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerColorChange}: LayerControlWrapperProps) {
   const [open, setOpen] = useState(false);
   const [activeLayerId, setActiveLayerId] = useState<string | undefined>(undefined);
+  const [attributeStatsByLayer, setAttributeStatsByLayer] = useState<Record<string, NumericAttributeStats[]>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const getLayerById = (layerId?: string): Layer | undefined => {
@@ -182,27 +262,172 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     return `local-${sanitized}-${Date.now()}`;
   }
 
-  const paintProperty = (layer: Layer): 'circle-color' | 'circle-stroke-color' | 'line-color' => {
+  const paintProperty = (layer: Layer, color: LayerColor): 'circle-color' | 'circle-stroke-color' | 'line-color' => {
     if (layer.type === 'line') return 'line-color';
-    if (layer.type === 'circle') return getCircleColorTarget(layer.color) === 'fill' ? 'circle-color' : 'circle-stroke-color';
+    if (layer.type === 'circle') return getCircleColorTarget(color) === 'fill' ? 'circle-color' : 'circle-stroke-color';
     return 'line-color';
   };
 
-  const applyLayerColor = (layer: Layer, colorHex: string) => {
+  const applyLayerColor = (layer: Layer, color: LayerColor) => {
     if (!map) return;
-    const prop = paintProperty(layer);
-    map.setPaintProperty(layer.id, prop, colorHex);
-    onLayerColorChange(layer.id, colorHex);
+    const currentProp = paintProperty(layer, layer.color);
+    const nextProp = paintProperty(layer, color);
+    if (currentProp !== nextProp) {
+      map.setPaintProperty(layer.id, currentProp, 'rgba(0,0,0,0)');
+    }
+    map.setPaintProperty(layer.id, nextProp, selectedAwareLayerColorExpression(color));
+    onLayerColorChange(layer.id, color);
+  };
+
+  const getLayerNumericAttributeStats = (layer: Layer): NumericAttributeStats[] => {
+    if (!map) return [];
+
+    try {
+      const queryOptions = layer.sourceLayer ? { sourceLayer: layer.sourceLayer } : undefined;
+      const features = map.querySourceFeatures(layer.source, queryOptions);
+      const stats = new Map<string, { min: number; max: number }>();
+
+      const updateStat = (attribute: string, value: number) => {
+        const existing = stats.get(attribute);
+        if (!existing) {
+          stats.set(attribute, { min: value, max: value });
+          return;
+        }
+        existing.min = Math.min(existing.min, value);
+        existing.max = Math.max(existing.max, value);
+      };
+
+      const parsePossiblyNestedJson = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        const trimmed = value.trim();
+        if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return value;
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return value;
+        }
+      };
+
+      const visit = (path: string, value: unknown) => {
+        const parsedValue = parsePossiblyNestedJson(value);
+
+        if (typeof parsedValue === 'number' && Number.isFinite(parsedValue)) {
+          updateStat(path, parsedValue);
+          return;
+        }
+
+        if (typeof parsedValue === 'string') {
+          const asNumber = Number(parsedValue);
+          if (Number.isFinite(asNumber)) {
+            updateStat(path, asNumber);
+          }
+          return;
+        }
+
+        if (Array.isArray(parsedValue) || !parsedValue || typeof parsedValue !== 'object') {
+          return;
+        }
+
+        Object.entries(parsedValue as Record<string, unknown>).forEach(([key, nestedValue]) => {
+          const nestedPath = path ? `${path}.${key}` : key;
+          visit(nestedPath, nestedValue);
+        });
+      };
+
+      features.forEach(feature => {
+        const properties = feature.properties;
+        if (!properties) return;
+        Object.entries(properties).forEach(([key, value]) => {
+          visit(key, value);
+        });
+      });
+
+      return Array.from(stats.entries())
+        .map(([attribute, value]) => ({ attribute, min: value.min, max: value.max }))
+        .sort((a, b) => a.attribute.localeCompare(b.attribute));
+    } catch (error) {
+      console.warn(`Unable to read numeric attributes for layer ${layer.id}`, error);
+      return [];
+    }
+  };
+
+  const ensureLayerStats = (layer: Layer): NumericAttributeStats[] => {
+    const existing = attributeStatsByLayer[layer.id];
+    if (existing && existing.length > 0) return existing;
+    const stats = getLayerNumericAttributeStats(layer);
+    setAttributeStatsByLayer(prev => ({ ...prev, [layer.id]: stats }));
+    return stats;
   };
 
   const handleConfigureLayer = (layerId: string) => {
+    const layer = getLayerById(layerId);
+    if (layer) {
+      ensureLayerStats(layer);
+    }
     setActiveLayerId(prev => prev === layerId ? undefined : layerId);
   };
 
   const handleColorChange = (layerId: string, colorResult: ColorResult) => {
     const layer = getLayerById(layerId);
     if (!layer) return;
-    applyLayerColor(layer, colorResult.hex);
+    applyLayerColor(layer, { ...layer.color, mode: 'fixed', color: colorResult.hex });
+  };
+
+  const handleColorModeChange = (layerId: string, mode: 'fixed' | 'gradient') => {
+    const layer = getLayerById(layerId);
+    if (!layer) return;
+
+    if (mode === 'fixed') {
+      const fixedColor = isGradientLayerColor(layer.color) ? '#24c6c6' : layer.color.color;
+      applyLayerColor(layer, { mode: 'fixed', color: fixedColor, ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {}) });
+      return;
+    }
+
+    const stats = ensureLayerStats(layer);
+    if (!stats.length) {
+      console.warn(`No numeric attributes available for gradient mode in layer ${layer.id}`);
+      return;
+    }
+
+    const selectedStats = stats[0];
+    applyLayerColor(layer, {
+      mode: 'gradient',
+      attribute: selectedStats.attribute,
+      scale: 'green-orange-red',
+      min: selectedStats.min,
+      max: selectedStats.max,
+      ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+    });
+  };
+
+  const handleGradientAttributeChange = (layerId: string, attribute: string) => {
+    const layer = getLayerById(layerId);
+    if (!layer) return;
+
+    const stats = ensureLayerStats(layer);
+    const selectedStats = stats.find(stat => stat.attribute === attribute);
+    if (!selectedStats) return;
+
+    const currentScale = isGradientLayerColor(layer.color) ? layer.color.scale : 'green-orange-red';
+    applyLayerColor(layer, {
+      mode: 'gradient',
+      attribute,
+      scale: currentScale,
+      min: selectedStats.min,
+      max: selectedStats.max,
+      ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+    });
+  };
+
+  const handleGradientScaleChange = (layerId: string, scale: GradientScaleId) => {
+    const layer = getLayerById(layerId);
+    if (!layer || !isGradientLayerColor(layer.color)) return;
+
+    applyLayerColor(layer, {
+      ...layer.color,
+      scale,
+      ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+    });
   };
 
   const handleRemoveLayer = (layerId: string) => {
@@ -242,8 +467,8 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
               map.removeSource(layerId);
             }
             map.addSource(layerId, { type: 'geojson', data: geojson });
-            registerLayerAsync(map, { id: layerId, name: file.name, type: layerType, source: layerId, color: {color: 'green'}});
             const newLayerColor = defaultLayerColor(layerType);
+            registerLayerAsync(map, { id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor });
             onAddLayer({ id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor, removable: true });
           } catch (error) {
             console.error('Failed to load FlatGeobuf file', error);
@@ -277,6 +502,10 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
         onRemoveLayer={handleRemoveLayer}
         onConfigureLayer={handleConfigureLayer}
         onColorChange={handleColorChange}
+        onColorModeChange={handleColorModeChange}
+        onGradientAttributeChange={handleGradientAttributeChange}
+        onGradientScaleChange={handleGradientScaleChange}
+        attributeStatsByLayer={attributeStatsByLayer}
         activeLayerId={activeLayerId}
       />
     </div>
@@ -308,7 +537,10 @@ export function LayerControl(props: LayerControlProps) {
           return container;          
         }, 
         onRemove: () => {
+          rootRef.current?.unmount();
           containerRef.current?.remove();
+          rootRef.current = null;
+          containerRef.current = null;
         }
       };
     }, {

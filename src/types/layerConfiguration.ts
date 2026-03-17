@@ -1,8 +1,7 @@
-import { Layer } from "../mapHelpers";
+import { Layer, LayerColor } from "../mapHelpers";
 
 export interface LayerColorOverride {
-  color: string;
-  target?: "stroke" | "fill";
+  color: LayerColor;
 }
 
 export interface LayerConfiguration {
