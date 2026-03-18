@@ -57,6 +57,19 @@ function getObjectLikeValue(value: unknown): Record<string, unknown> | unknown[]
   return null;
 }
 
+function getStringArrayValue(value: unknown): string[] | null {
+  if (Array.isArray(value)) {
+    return value.every((entry) => typeof entry === 'string') ? value : null;
+  }
+
+  if (typeof value !== 'string') return null;
+
+  const parsed = tryParseJsonObjectOrArray(value);
+  if (!Array.isArray(parsed)) return null;
+
+  return parsed.every((entry) => typeof entry === 'string') ? (parsed as string[]) : null;
+}
+
 function PropertyRow({
   name,
   value,
@@ -69,6 +82,7 @@ function PropertyRow({
   renderTagsAsChips?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const tagValues = renderTagsAsChips ? getStringArrayValue(value) : null;
   const objectLikeValue = getObjectLikeValue(value);
 
   const entries: [string, unknown][] = objectLikeValue
@@ -80,59 +94,59 @@ function PropertyRow({
   const preview = objectLikeValue ? toSingleLine(JSON.stringify(objectLikeValue)) : '';
   const rowSpacing = depth === 0 ? 6 : 4;
 
-  const tagsAsChips = renderTagsAsChips && typeof value === 'string' && value.startsWith('["');
-
   return (
     <li style={{ marginBottom: rowSpacing }}>
       <div style={{ display: 'flex', alignItems: 'flex-start' }}>
         <strong style={{ marginTop: 1, marginRight: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>{name}:</strong>
-        {objectLikeValue ? (
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              padding: 0,
-              margin: 0,
-              color: '#7b7b7b',
-              fontSize: 'inherit',
-              fontFamily: 'inherit',
-              textAlign: 'left',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              flex: '1 1 auto',
-              minWidth: 0,
-              maxWidth: '100%'
-            }}
-            title={preview}
-          >
-            <span>{expanded ? '▼' : '▶'}</span>
-            {!expanded && (
-              <span
-                style={{
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  minWidth: 0,
-                  flex: '1 1 auto'
-                }}
-              >
-                {preview}
-              </span>
-            )}
-          </button>
-        ) : tagsAsChips ? (
-          <div style={{ display: 'inline-block' }}>
-            {(JSON.parse(value) as []).map((tag, i) => <Chip key={i} label={tag} />)}
-          </div>
-        ) : (
-          <div style={{ flex: 1 }}>
-            {formatValue(value)}
-          </div>
-        )}
+        <div style={{ flex: 1, minWidth: 0, paddingTop: 1 }}>
+          {tagValues ? (
+            <div style={{ display: 'inline-block' }}>
+              {tagValues.map((tag, i) => <Chip key={`${tag}-${i}`} label={tag} />)}
+            </div>
+          ) : objectLikeValue ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(!expanded)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                padding: 0,
+                margin: 0,
+                color: '#7b7b7b',
+                fontSize: 'inherit',
+                fontFamily: 'inherit',
+                textAlign: 'left',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                flex: '1 1 auto',
+                minWidth: 0,
+                maxWidth: '100%'
+              }}
+              title={preview}
+            >
+              <span>{expanded ? '▼' : '▶'}</span>
+              {!expanded && (
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    minWidth: 0,
+                    flex: '1 1 auto'
+                  }}
+                >
+                  {preview}
+                </span>
+              )}
+            </button>
+          ) : (
+            <div>
+              {formatValue(value)}
+            </div>
+          )}
+        </div>
       </div>
       {objectLikeValue && expanded && (
         <ul
