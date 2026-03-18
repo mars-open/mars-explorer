@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type ChangeEvent } from 'react';
 import type { FeatureCollection } from 'geojson';
 import maplibregl, { ControlPosition } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
@@ -260,21 +260,6 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     return layers.find(layer => layer.id === layerId);
   };
 
-  if (!open) {
-    return (
-      <div style={{display: 'flex', flexDirection: 'column'}}>
-        <button
-          className="maplibregl-ctrl-icon"
-          title="Show layers"
-          onClick={() => setOpen(true)}
-          style={{width: 30, height: 30, lineHeight: '28px', padding: 0}}
-        >
-          ≡
-        </button>
-      </div>
-    );
-  }
-
   async function loadFlatGeobuf(file: File): Promise<FeatureCollection> {
     const arrayBuffer = await file.arrayBuffer();
     const features = [];
@@ -307,11 +292,86 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     return 'line-color';
   };
 
+  const parsePossiblyNestedJson = useCallback((value: unknown): unknown => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return value;
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }, []);
+
+  const getNumericValueByAttributePath = useCallback((properties: maplibregl.MapGeoJSONFeature['properties'], attributePath: string): number | null => {
+    if (!properties || !attributePath) return null;
+
+    const direct = properties[attributePath];
+    const asDirectNumber = Number(direct);
+    if (Number.isFinite(asDirectNumber)) return asDirectNumber;
+
+    const segments = attributePath.split('.').filter(Boolean);
+    if (!segments.length) return null;
+
+    let current: unknown = properties;
+    for (const segment of segments) {
+      current = parsePossiblyNestedJson(current);
+      if (!current || typeof current !== 'object' || Array.isArray(current)) return null;
+      current = (current as Record<string, unknown>)[segment];
+    }
+
+    current = parsePossiblyNestedJson(current);
+    const asNumber = Number(current);
+    return Number.isFinite(asNumber) ? asNumber : null;
+  }, [parsePossiblyNestedJson]);
+
+  const populateColoringValueState = useCallback((layer: Layer, attribute: string) => {
+    if (!map || !attribute) return;
+
+    try {
+      const queryOptions = layer.sourceLayer ? { sourceLayer: layer.sourceLayer } : undefined;
+      const features = map.querySourceFeatures(layer.source, queryOptions);
+      for (const feature of features) {
+        if (feature.id == null) continue;
+
+        const identifier = layer.sourceLayer
+          ? { source: layer.source, sourceLayer: layer.sourceLayer, id: feature.id }
+          : { source: layer.source, id: feature.id };
+        const value = getNumericValueByAttributePath(feature.properties, attribute);
+
+        if (value == null) {
+          map.removeFeatureState(identifier, 'coloringValue');
+        } else {
+          map.setFeatureState(identifier, { coloringValue: value });
+        }
+      }
+    } catch (error) {
+      console.warn(`Unable to populate coloring state for layer ${layer.id}`, error);
+    }
+  }, [map, getNumericValueByAttributePath]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const syncGradientState = () => {
+      layers.forEach(layer => {
+        if (!isGradientLayerColor(layer.color)) return;
+        populateColoringValueState(layer, layer.color.attribute);
+      });
+    };
+
+    syncGradientState();
+    map.on('moveend', syncGradientState);
+    return () => {
+      map.off('moveend', syncGradientState);
+    };
+  }, [layers, map, populateColoringValueState]);
+
   const applyLayerColor = (layer: Layer, color: LayerColor) => {
     if (!map) return;
     const nextProp = paintProperty(layer, color);
     const expr = selectedAwareLayerColorExpression(color);
-    console.log(`Applying color to layer ${layer.id} with paint property ${nextProp}`, color, expr);
+    console.log(`Applying color to layer ${layer.id} with paint property ${nextProp}`, color, JSON.stringify(expr));
     map.setPaintProperty(layer.id, nextProp, expr);
     onLayerColorChange(layer.id, color);
   };
@@ -332,17 +392,6 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
         }
         existing.min = Math.min(existing.min, value);
         existing.max = Math.max(existing.max, value);
-      };
-
-      const parsePossiblyNestedJson = (value: unknown): unknown => {
-        if (typeof value !== 'string') return value;
-        const trimmed = value.trim();
-        if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return value;
-        try {
-          return JSON.parse(trimmed);
-        } catch {
-          return value;
-        }
       };
 
       const visit = (path: string, value: unknown) => {
@@ -427,6 +476,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     }
 
     const selectedStats = stats[0];
+    populateColoringValueState(layer, selectedStats.attribute);
     applyLayerColor(layer, {
       mode: 'gradient',
       attribute: selectedStats.attribute,
@@ -446,6 +496,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     if (!selectedStats) return;
 
     const currentScale = isGradientLayerColor(layer.color) ? layer.color.scale : 'green-orange-red';
+    populateColoringValueState(layer, attribute);
     applyLayerColor(layer, {
       mode: 'gradient',
       attribute,
@@ -477,6 +528,21 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     onRemoveLayer(layerId);
   };
 
+  if (!open) {
+    return (
+      <div style={{display: 'flex', flexDirection: 'column'}}>
+        <button
+          className="maplibregl-ctrl-icon"
+          title="Show layers"
+          onClick={() => setOpen(true)}
+          style={{width: 30, height: 30, lineHeight: '28px', padding: 0}}
+        >
+          ≡
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{display: 'flex', flexDirection: 'column', minWidth: 250}}>
       <input
@@ -503,7 +569,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
             if (map.getSource(layerId)) {
               map.removeSource(layerId);
             }
-            map.addSource(layerId, { type: 'geojson', data: geojson });
+            map.addSource(layerId, { type: 'geojson', data: geojson, generateId: true });
             const newLayerColor = defaultLayerColor(layerType);
             registerLayerAsync(map, { id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor });
             onAddLayer({ id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor, removable: true });

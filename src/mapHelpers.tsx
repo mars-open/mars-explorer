@@ -126,8 +126,8 @@ export const getCircleColorTarget = (color: LayerColor): 'stroke' | 'fill' =>
 
 export const defaultLayerColor = (type: LayerType): LayerColor =>
   type === 'circle'
-    ? { mode: 'fixed', color: '#24c6c6', target: 'fill' }
-    : { mode: 'fixed', color: '#24c6c6' };
+    ? { mode: 'fixed', color: '#2427c6', target: 'fill' }
+    : { mode: 'fixed', color: '#2427c6' };
 
 function gradientExpression(color: LayerColorGradient): unknown {
   const min = Number(color.min);
@@ -135,48 +135,17 @@ function gradientExpression(color: LayerColorGradient): unknown {
   const isRangeValid = Number.isFinite(min) && Number.isFinite(max) && min < max;
   const scale = gradientScales[color.scale];
 
-  if (!isRangeValid || !scale?.length || !color.attribute) return '#888888';
+  if (!isRangeValid || !scale?.length || !color.attribute) {
+    console.log('Invalid gradient configuration, falling back to color "grey". Details:', { min, max, scale, attribute: color.attribute });
+    return '#888888';
+  }
 
   if (scale.length === 1) return scale[0];
-
-  const toNumberInput = (() => {
-    const buildSafeNestedGetter = (segments: string[]): unknown => {
-      const build = (idx: number, parentExpression?: unknown): unknown => {
-        const key = segments[idx];
-        const getExpression = parentExpression ? ['get', key, parentExpression] : ['get', key];
-
-        if (!parentExpression) {
-          if (idx === segments.length - 1) {
-            return ['case', ['has', key], getExpression, null];
-          }
-          return ['case', ['has', key], build(idx + 1, getExpression), null];
-        }
-
-        const parentIsObject = ['==', ['typeof', parentExpression], 'object'];
-        const hasOnParent = ['has', key, parentExpression];
-
-        if (idx === segments.length - 1) {
-          return ['case', parentIsObject, ['case', hasOnParent, getExpression, null], null];
-        }
-
-        return ['case', parentIsObject, ['case', hasOnParent, build(idx + 1, getExpression), null], null];
-      };
-
-      return build(0);
-    };
-
-    const segments = color.attribute.split('.').filter(Boolean);
-    if (segments.length <= 1) {
-      return ['get', color.attribute];
-    } else {
-      return buildSafeNestedGetter(segments);
-    }
-  })();
 
   const expression: unknown[] = [
     'interpolate',
     ['linear'],
-    ['to-number', toNumberInput, min]
+    ['to-number', ['feature-state', 'coloringValue'], min]
   ];
 
   const lastIdx = scale.length - 1;
