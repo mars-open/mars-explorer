@@ -1,6 +1,8 @@
 import { MapGeoJSONFeature, LngLat } from "react-map-gl/maplibre";
 import { useEffect, useState } from "react";
 
+const EXPANDED_INDENT_PX = 15;
+
 export class SelectedFeature {
   feature: MapGeoJSONFeature;
   lngLat: LngLat;
@@ -26,6 +28,127 @@ function formatValue(value: unknown): string {
     return JSON.stringify(value);
   }
   return String(value);
+}
+
+function toSingleLine(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> | unknown[] {
+  return typeof value === 'object' && value !== null;
+}
+
+function tryParseJsonObjectOrArray(value: unknown): Record<string, unknown> | unknown[] | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    return isObjectLike(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function getObjectLikeValue(value: unknown): Record<string, unknown> | unknown[] | null {
+  const parsedJsonObject = tryParseJsonObjectOrArray(value);
+  if (parsedJsonObject) return parsedJsonObject;
+  if (isObjectLike(value)) return value;
+  return null;
+}
+
+function PropertyRow({
+  name,
+  value,
+  depth = 0,
+  renderTagsAsChips = false,
+}: {
+  name: string;
+  value: unknown;
+  depth?: number;
+  renderTagsAsChips?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const objectLikeValue = getObjectLikeValue(value);
+
+  const entries: [string, unknown][] = objectLikeValue
+    ? (Array.isArray(objectLikeValue)
+      ? objectLikeValue.map((entry, index) => [String(index), entry])
+      : Object.entries(objectLikeValue).sort(([keyA], [keyB]) => keyA.localeCompare(keyB)))
+    : [];
+
+  const preview = objectLikeValue ? toSingleLine(JSON.stringify(objectLikeValue)) : '';
+  const rowSpacing = depth === 0 ? 6 : 4;
+
+  const tagsAsChips = renderTagsAsChips && typeof value === 'string' && value.startsWith('["');
+
+  return (
+    <li style={{ marginBottom: rowSpacing }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+        <strong style={{ marginTop: 1, marginRight: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>{name}:</strong>
+        {objectLikeValue ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              padding: 0,
+              margin: 0,
+              color: '#7b7b7b',
+              fontSize: 'inherit',
+              fontFamily: 'inherit',
+              textAlign: 'left',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              flex: '1 1 auto',
+              minWidth: 0,
+              maxWidth: '100%'
+            }}
+            title={preview}
+          >
+            <span>{expanded ? '▼' : '▶'}</span>
+            {!expanded && (
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  minWidth: 0,
+                  flex: '1 1 auto'
+                }}
+              >
+                {preview}
+              </span>
+            )}
+          </button>
+        ) : tagsAsChips ? (
+          <div style={{ display: 'inline-block' }}>
+            {(JSON.parse(value) as []).map((tag, i) => <Chip key={i} label={tag} />)}
+          </div>
+        ) : (
+          <div style={{ flex: 1 }}>
+            {formatValue(value)}
+          </div>
+        )}
+      </div>
+      {objectLikeValue && expanded && (
+        <ul
+          style={{
+            listStyle: 'none',
+            margin: '6px 0 0 0',
+            paddingLeft: EXPANDED_INDENT_PX
+          }}
+        >
+          {entries.map(([key, entryValue]) => (
+            <PropertyRow key={key} name={key} value={entryValue} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
 }
 
 function Chip({ label }: { label: string }) {
@@ -123,16 +246,7 @@ export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange }: Se
                   .filter(([k, v]) => k == "id_positionpoint" || v !== sf.feature.id)
                   .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
                   .map(([k, v]) => (
-                    <li key={k} style={{marginBottom: 6}}>
-                      <strong>{k}:</strong>&nbsp;
-                      {k === 'tags' && typeof v === 'string' && v.startsWith('["') ? (
-                        <div style={{ display: 'inline-block', marginLeft: 4 }}>
-                          {(JSON.parse(v) as []).map((tag, i) => <Chip key={i} label={tag} />)}
-                        </div>
-                      ) : (
-                        formatValue(v)
-                      )}
-                    </li>
+                    <PropertyRow key={k} name={k} value={v} renderTagsAsChips={k === 'tags'} />
                   ))}
               </ul>
             </div>
