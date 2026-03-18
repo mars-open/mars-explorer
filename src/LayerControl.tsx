@@ -190,6 +190,9 @@ function LayerControlContent({
                           <option value={stat.attribute} key={stat.attribute}>{stat.attribute}</option>
                         ))}
                       </select>
+                      <div className="layer-control-range">
+                        Range: {layer.color.min} - {layer.color.max}
+                      </div>
                     </label>
                     <div className="layer-control-field">
                       <span className="layer-control-label">Color scale</span>
@@ -210,13 +213,6 @@ function LayerControlContent({
                         ))}
                       </div>
                     </div>
-                    <div className="layer-control-range">
-                      Range: {layer.color.min} - {layer.color.max}
-                    </div>
-                    <div
-                      className="layer-control-current-scale"
-                      style={{ background: `linear-gradient(to right, ${gradientScales[layer.color.scale].join(', ')})` }}
-                    />
                   </>
                 )}
               </div>
