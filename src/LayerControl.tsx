@@ -13,6 +13,8 @@ import {
   isGradientLayerColor,
   Layer,
   LayerColor,
+  LayerColorFixed,
+  LayerColorGradient,
   LayerType,
   registerLayerAsync,
   selectedAwareLayerColorExpression,
@@ -213,7 +215,15 @@ function LayerControlContent({
                         value={layer.color.attribute}
                         onChange={(event) => onGradientAttributeChange(layer.id, event.target.value)}
                       >
-                        {(attributeStatsByLayer[layer.id] ?? []).map(stat => (
+                        {(
+                          (attributeStatsByLayer[layer.id]?.length
+                            ? attributeStatsByLayer[layer.id]
+                            : [{
+                                attribute: layer.color.attribute,
+                                min: layer.color.min,
+                                max: layer.color.max
+                              }])
+                        ).map(stat => (
                           <option value={stat.attribute} key={stat.attribute}>{stat.attribute}</option>
                         ))}
                       </select>
@@ -300,19 +310,24 @@ function LayerControlContent({
           )}
         </div>
       ))}
-      <div key="terrain" className="items-center cursor-pointer mb-1" 
-        style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 6 }}>
-        <label key="terrain" className="flex items-center cursor-pointer mb-1 block"
-          style={{ flex: 1, display: 'flex', height: 22, alignItems: 'center', lineHeight: '26px'}}>
-          <input
-            type="checkbox" checked={terrainEnabled}
-            onChange={(e) => toogleTerrain(e.target.checked)}
-            className="tags-filter-checkbox"
-            style={{ marginRight: 8 }}
-          />
-          Terrain
-        </label>
-      </div>      
+      <div
+        key="terrain"
+        className="items-center cursor-pointer mb-1"
+        style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
+      >
+        <Checkbox
+          className="layer-control-layer-checkbox"
+          isSelected={terrainEnabled}
+          onChange={(selected) => toogleTerrain(selected)}
+        >
+          {({ isSelected }) => (
+            <>
+              <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+              <span>Terrain</span>
+            </>
+          )}
+        </Checkbox>
+      </div>
     </div>
   );
 }
@@ -331,6 +346,23 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
   const [attributeStatsByLayer, setAttributeStatsByLayer] = useState<Record<string, NumericAttributeStats[]>>({});
   const [gradientRangeErrorByLayer, setGradientRangeErrorByLayer] = useState<Record<string, string | undefined>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const lastFixedColorByLayerRef = useRef<Record<string, LayerColorFixed>>({});
+  const lastGradientColorByLayerRef = useRef<Record<string, LayerColorGradient>>({});
+
+  useEffect(() => {
+    layers.forEach((layer) => {
+      if (isGradientLayerColor(layer.color)) {
+        lastGradientColorByLayerRef.current[layer.id] = { ...layer.color };
+        return;
+      }
+
+      lastFixedColorByLayerRef.current[layer.id] = {
+        mode: 'fixed',
+        color: layer.color.color,
+        ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+      };
+    });
+  }, [layers]);
 
   const getLayerById = (layerId?: string): Layer | undefined => {
     if (!layerId) return undefined;
@@ -543,8 +575,41 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     if (!layer) return;
 
     if (mode === 'fixed') {
-      const fixedColor = isGradientLayerColor(layer.color) ? '#24c6c6' : layer.color.color;
-      applyLayerColor(layer, { mode: 'fixed', color: fixedColor, ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {}) });
+      const cachedFixed = lastFixedColorByLayerRef.current[layer.id];
+      const defaultColor = defaultLayerColor(layer.type);
+      const defaultFixedColor = isGradientLayerColor(defaultColor) ? '#2427c6' : defaultColor.color;
+      const fallbackFixed = {
+        mode: 'fixed' as const,
+        color: isGradientLayerColor(layer.color) ? defaultFixedColor : layer.color.color,
+        ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+      };
+      const nextFixed: LayerColorFixed = cachedFixed
+        ? {
+            ...cachedFixed,
+            ...(layer.type === 'circle' ? { target: cachedFixed.target ?? getCircleColorTarget(layer.color) } : {})
+          }
+        : fallbackFixed;
+
+      applyLayerColor(layer, nextFixed);
+      return;
+    }
+
+    const cachedGradient = lastGradientColorByLayerRef.current[layer.id];
+    if (cachedGradient) {
+      const stats = ensureLayerStats(layer);
+      const matchedAttribute = stats.find(stat => stat.attribute === cachedGradient.attribute);
+      const fallbackAttribute = stats[0]?.attribute;
+      const nextAttribute = matchedAttribute
+        ? cachedGradient.attribute
+        : fallbackAttribute ?? cachedGradient.attribute;
+
+      populateColoringValueState(layer, nextAttribute, Boolean(cachedGradient.useAbsoluteValue));
+      applyLayerColor(layer, {
+        ...cachedGradient,
+        attribute: nextAttribute,
+        ...(layer.type === 'circle' ? { target: cachedGradient.target ?? getCircleColorTarget(layer.color) } : {})
+      });
+      setGradientRangeErrorByLayer(prev => ({ ...prev, [layerId]: undefined }));
       return;
     }
 
