@@ -42,8 +42,25 @@ interface LayerControlContentProps {
   onColorModeChange: (layerId: string, mode: 'fixed' | 'gradient') => void;
   onGradientAttributeChange: (layerId: string, attribute: string) => void;
   onGradientScaleChange: (layerId: string, scale: GradientScaleId) => void;
+  onGradientRangeChange: (layerId: string, min: number, max: number) => void;
+  onGradientUseAbsoluteChange: (layerId: string, useAbsoluteValue: boolean) => void;
+  gradientRangeErrorByLayer: Record<string, string | undefined>;
   attributeStatsByLayer: Record<string, NumericAttributeStats[]>;
   activeLayerId: string | undefined;
+}
+
+function roundToSignificantDigits(value: number, digits = 3): number {
+  if (!Number.isFinite(value) || value === 0) return value;
+  return Number.parseFloat(value.toPrecision(digits));
+}
+
+function toAbsoluteRange(min: number, max: number): { min: number; max: number } {
+  const absMin = min <= 0 && max >= 0 ? 0 : Math.min(Math.abs(min), Math.abs(max));
+  const absMax = Math.max(Math.abs(min), Math.abs(max));
+  return {
+    min: roundToSignificantDigits(absMin),
+    max: roundToSignificantDigits(absMax)
+  };
 }
 
 function LayerControlContent({
@@ -55,6 +72,9 @@ function LayerControlContent({
   onColorModeChange,
   onGradientAttributeChange,
   onGradientScaleChange,
+  onGradientRangeChange,
+  onGradientUseAbsoluteChange,
+  gradientRangeErrorByLayer,
   attributeStatsByLayer,
   activeLayerId
 }: LayerControlContentProps) {
@@ -158,21 +178,28 @@ function LayerControlContent({
                 {!isGradientLayerColor(layer.color) && (
                   <div className="layer-control-color-picker">
                     <ColorPicker
+                      aria-label={`Color picker for ${layer.name}`}
                       value={parseColor(layer.color.color).toFormat('hsb')}
                       onChange={(color) => onColorChange(layer.id, color.toString('hex'))}
                     >
                       <div className="layer-control-color-grid">
-                        <ColorArea className="layer-control-color-area" colorSpace="hsb" xChannel="saturation" yChannel="brightness">
+                        <ColorArea
+                          aria-label={`Saturation and brightness for ${layer.name}`}
+                          className="layer-control-color-area"
+                          colorSpace="hsb"
+                          xChannel="saturation"
+                          yChannel="brightness"
+                        >
                           <ColorThumb className="layer-control-color-thumb" />
                         </ColorArea>
-                        <ColorSlider className="layer-control-hue-slider" channel="hue">
+                        <ColorSlider aria-label={`Hue for ${layer.name}`} className="layer-control-hue-slider" channel="hue">
                           <SliderTrack className="layer-control-hue-track">
                             <ColorThumb className="layer-control-hue-thumb" />
                           </SliderTrack>
                         </ColorSlider>
                       </div>
-                      <ColorField className="layer-control-color-field">
-                        <Input className="layer-control-color-input" />
+                      <ColorField aria-label={`Hex color for ${layer.name}`} className="layer-control-color-field">
+                        <Input aria-label={`Hex color input for ${layer.name}`} className="layer-control-color-input" />
                       </ColorField>
                     </ColorPicker>
                   </div>
@@ -190,9 +217,62 @@ function LayerControlContent({
                           <option value={stat.attribute} key={stat.attribute}>{stat.attribute}</option>
                         ))}
                       </select>
-                      <div className="layer-control-range">
-                        Range: {layer.color.min} - {layer.color.max}
+                    <label className="layer-control-field">
+                      <Checkbox
+                        className="layer-control-layer-checkbox"
+                        isSelected={Boolean(layer.color.useAbsoluteValue)}
+                        onChange={(selected) => onGradientUseAbsoluteChange(layer.id, selected)}
+                      >
+                        {({ isSelected }) => (
+                          <>
+                            <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+                            <span>Use absolute value</span>
+                          </>
+                        )}
+                      </Checkbox>
+                    </label>
+                      <div className="layer-control-range-editor">
+                        <label className="layer-control-range-field">
+                          <span>Min</span>
+                          <input
+                            type="number"
+                            className="layer-control-range-input"
+                            value={layer.color.min}
+                            step="any"
+                            min={layer.color.useAbsoluteValue ? 0 : undefined}
+                            aria-invalid={Boolean(gradientRangeErrorByLayer[layer.id])}
+                            onChange={(event) => {
+                              const nextMin = Number(event.target.value);
+                              if (!Number.isFinite(nextMin)) return;
+                              const currentColor = layer.color;
+                              if (!isGradientLayerColor(currentColor)) return;
+                              onGradientRangeChange(layer.id, nextMin, currentColor.max);
+                            }}
+                          />
+                        </label>
+                        <label className="layer-control-range-field">
+                          <span>Max</span>
+                          <input
+                            type="number"
+                            className="layer-control-range-input"
+                            value={layer.color.max}
+                            step="any"
+                            aria-invalid={Boolean(gradientRangeErrorByLayer[layer.id])}
+                            onChange={(event) => {
+                              const nextMax = Number(event.target.value);
+                              if (!Number.isFinite(nextMax)) return;
+                              const currentColor = layer.color;
+                              if (!isGradientLayerColor(currentColor)) return;
+                              onGradientRangeChange(layer.id, currentColor.min, nextMax);
+                            }}
+                          />
+                        </label>
                       </div>
+                      {gradientRangeErrorByLayer[layer.id] && (
+                        <div className="layer-control-range-error" role="alert">
+                          {gradientRangeErrorByLayer[layer.id]}
+                        </div>
+                      )}
                     </label>
                     <div className="layer-control-field">
                       <span className="layer-control-label">Color scale</span>
@@ -249,6 +329,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
   const [open, setOpen] = useState(false);
   const [activeLayerId, setActiveLayerId] = useState<string | undefined>(undefined);
   const [attributeStatsByLayer, setAttributeStatsByLayer] = useState<Record<string, NumericAttributeStats[]>>({});
+  const [gradientRangeErrorByLayer, setGradientRangeErrorByLayer] = useState<Record<string, string | undefined>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const getLayerById = (layerId?: string): Layer | undefined => {
@@ -321,7 +402,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     return Number.isFinite(asNumber) ? asNumber : null;
   }, [parsePossiblyNestedJson]);
 
-  const populateColoringValueState = useCallback((layer: Layer, attribute: string) => {
+  const populateColoringValueState = useCallback((layer: Layer, attribute: string, useAbsoluteValue = false) => {
     if (!map || !attribute) return;
 
     try {
@@ -334,12 +415,15 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
           ? { source: layer.source, sourceLayer: layer.sourceLayer, id: feature.id }
           : { source: layer.source, id: feature.id };
         const value = getNumericValueByAttributePath(feature.properties, attribute);
+        const stateValue = value == null
+          ? null
+          : (useAbsoluteValue ? Math.abs(value) : value);
 
-        if (value == null) {
-          map.removeFeatureState(identifier, 'coloringValue');
-        } else {
-          map.setFeatureState(identifier, { coloringValue: value });
-        }
+        // Avoid removeFeatureState during frequent move/zoom sync; some MapLibre
+        // versions can throw while coalescing changes for missing state objects.
+        map.setFeatureState(identifier, {
+          coloringValue: stateValue
+        });
       }
     } catch (error) {
       console.warn(`Unable to populate coloring state for layer ${layer.id}`, error);
@@ -352,7 +436,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     const syncGradientState = () => {
       layers.forEach(layer => {
         if (!isGradientLayerColor(layer.color)) return;
-        populateColoringValueState(layer, layer.color.attribute);
+        populateColoringValueState(layer, layer.color.attribute, Boolean(layer.color.useAbsoluteValue));
       });
     };
 
@@ -367,7 +451,6 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     if (!map) return;
     const nextProp = paintProperty(layer, color);
     const expr = selectedAwareLayerColorExpression(color);
-    console.log(`Applying color to layer ${layer.id} with paint property ${nextProp}`, color, JSON.stringify(expr));
     map.setPaintProperty(layer.id, nextProp, expr);
     onLayerColorChange(layer.id, color);
   };
@@ -472,13 +555,14 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     }
 
     const selectedStats = stats[0];
-    populateColoringValueState(layer, selectedStats.attribute);
+    populateColoringValueState(layer, selectedStats.attribute, false);
     applyLayerColor(layer, {
       mode: 'gradient',
       attribute: selectedStats.attribute,
       scale: 'green-orange-red',
-      min: selectedStats.min,
-      max: selectedStats.max,
+      min: roundToSignificantDigits(selectedStats.min),
+      max: roundToSignificantDigits(selectedStats.max),
+      useAbsoluteValue: false,
       ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
     });
   };
@@ -492,15 +576,24 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     if (!selectedStats) return;
 
     const currentScale = isGradientLayerColor(layer.color) ? layer.color.scale : 'green-orange-red';
-    populateColoringValueState(layer, attribute);
+    const useAbsoluteValue = isGradientLayerColor(layer.color) ? Boolean(layer.color.useAbsoluteValue) : false;
+    populateColoringValueState(layer, attribute, useAbsoluteValue);
+    const nextRange = useAbsoluteValue
+      ? toAbsoluteRange(selectedStats.min, selectedStats.max)
+      : {
+          min: roundToSignificantDigits(selectedStats.min),
+          max: roundToSignificantDigits(selectedStats.max)
+        };
     applyLayerColor(layer, {
       mode: 'gradient',
       attribute,
       scale: currentScale,
-      min: selectedStats.min,
-      max: selectedStats.max,
+      min: nextRange.min,
+      max: nextRange.max,
+      useAbsoluteValue,
       ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
     });
+    setGradientRangeErrorByLayer(prev => ({ ...prev, [layerId]: undefined }));
   };
 
   const handleGradientScaleChange = (layerId: string, scale: GradientScaleId) => {
@@ -510,6 +603,78 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     applyLayerColor(layer, {
       ...layer.color,
       scale,
+      ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+    });
+  };
+
+  const handleGradientRangeChange = (layerId: string, min: number, max: number) => {
+    const layer = getLayerById(layerId);
+    if (!layer || !isGradientLayerColor(layer.color)) return;
+
+    if (layer.color.useAbsoluteValue && min < 0) {
+      setGradientRangeErrorByLayer(prev => ({
+        ...prev,
+        [layerId]: 'Min cannot be negative when absolute value is enabled.'
+      }));
+      return;
+    }
+
+    if (min >= max) {
+      setGradientRangeErrorByLayer(prev => ({
+        ...prev,
+        [layerId]: 'Min must be smaller than max.'
+      }));
+      return;
+    }
+
+    setGradientRangeErrorByLayer(prev => ({ ...prev, [layerId]: undefined }));
+
+    applyLayerColor(layer, {
+      ...layer.color,
+      min,
+      max,
+      ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
+    });
+  };
+
+  const handleGradientUseAbsoluteChange = (layerId: string, useAbsoluteValue: boolean) => {
+    const layer = getLayerById(layerId);
+    if (!layer || !isGradientLayerColor(layer.color)) return;
+    const currentColor = layer.color;
+
+    populateColoringValueState(layer, currentColor.attribute, useAbsoluteValue);
+
+    let nextMin = layer.color.min;
+    let nextMax = layer.color.max;
+
+    if (useAbsoluteValue) {
+      const matchingStats = (attributeStatsByLayer[layerId] ?? [])
+        .find(stat => stat.attribute === currentColor.attribute);
+
+      if (matchingStats) {
+        const absoluteRange = toAbsoluteRange(matchingStats.min, matchingStats.max);
+        nextMin = absoluteRange.min;
+        nextMax = absoluteRange.max;
+      } else {
+        nextMin = Math.max(0, nextMin);
+      }
+
+      if (nextMin >= nextMax) {
+        setGradientRangeErrorByLayer(prev => ({
+          ...prev,
+          [layerId]: 'Min must be smaller than max.'
+        }));
+        return;
+      }
+    }
+
+    setGradientRangeErrorByLayer(prev => ({ ...prev, [layerId]: undefined }));
+
+    applyLayerColor(layer, {
+      ...currentColor,
+      useAbsoluteValue,
+      min: nextMin,
+      max: nextMax,
       ...(layer.type === 'circle' ? { target: getCircleColorTarget(layer.color) } : {})
     });
   };
@@ -604,6 +769,9 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
         onColorModeChange={handleColorModeChange}
         onGradientAttributeChange={handleGradientAttributeChange}
         onGradientScaleChange={handleGradientScaleChange}
+        onGradientRangeChange={handleGradientRangeChange}
+        onGradientUseAbsoluteChange={handleGradientUseAbsoluteChange}
+        gradientRangeErrorByLayer={gradientRangeErrorByLayer}
         attributeStatsByLayer={attributeStatsByLayer}
         activeLayerId={activeLayerId}
       />

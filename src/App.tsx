@@ -17,7 +17,7 @@ import { importGbmZipAsLayer } from "./gbm";
 
 // constants
 const ppsZoomLevels = [15, 18, 21].sort((a,b) => b - a).reverse();
-const ppsZoomLevelMin = Math.min(...ppsZoomLevels);
+const ppsZoomLevelMin = 14;
 const edgesZoomLevelMin = 10;
 
 const defaultViewState = {
@@ -84,6 +84,7 @@ const layerConfigurations: LayerConfiguration[] = (() => {
 })();
 
 const defaultLayerConfigId = 'ch';
+const layerConfigQueryParam = 'cfg';
 
 const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer => {
   if (!override) return layer;
@@ -100,28 +101,25 @@ const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer 
 const cloneLayers = (sourceLayers: Layer[], colorOverrides?: LayerConfiguration['colorOverrides']) =>
   sourceLayers.map(layer => applyColorOverride(layer, colorOverrides?.[layer.id]));
 
-const normalizeBasePath = (baseUrl: string) => {
-  const trimmed = baseUrl.replace(/^\/+|\/+$/g, "");
-  return trimmed ? `/${trimmed}` : "";
-};
-
-const parseLayerConfigIdFromPath = (configs: LayerConfiguration[]) => {
-  const pathSegments = window.location.pathname.split('/').filter(Boolean);
-  const candidate = pathSegments[pathSegments.length - 1];
+const parseLayerConfigIdFromQuery = (configs: LayerConfiguration[]) => {
+  const queryParams = new URLSearchParams(window.location.search);
+  const candidate = queryParams.get(layerConfigQueryParam);
+  if (!candidate) return defaultLayerConfigId;
   const matchingConfig = configs.find(config => config.id === candidate);
   return matchingConfig?.id ?? defaultLayerConfigId;
 };
 
-const formatPathForLayerConfig = (configId: string) => {
-  const basePath = normalizeBasePath(import.meta.env.BASE_URL);
-  return `${basePath}/${configId}`;
+const formatUrlForLayerConfig = (configId: string) => {
+  const url = new URL(window.location.href);
+  url.searchParams.set(layerConfigQueryParam, configId);
+  return `${url.pathname}${url.search}${url.hash}`;
 };
 // "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
 
 
 function App() {
 
-  const initialLayerConfigId = parseLayerConfigIdFromPath(layerConfigurations);
+  const initialLayerConfigId = parseLayerConfigIdFromQuery(layerConfigurations);
   const initialLayerConfig = layerConfigurations.find(cfg => cfg.id === initialLayerConfigId)
     ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
     ?? layerConfigurations[0];
@@ -170,17 +168,18 @@ function App() {
   }, [applyLayerConfig]);
 
   useEffect(() => {
-    const targetPath = formatPathForLayerConfig(selectedLayerConfigId);
-    if (window.location.pathname !== targetPath) {
-      window.history.pushState(null, '', `${targetPath}${window.location.search}${window.location.hash}`);
+    const targetUrl = formatUrlForLayerConfig(selectedLayerConfigId);
+    const currentConfigId = new URLSearchParams(window.location.search).get(layerConfigQueryParam);
+    if (currentConfigId !== selectedLayerConfigId) {
+      window.history.pushState(null, '', targetUrl);
     }
   }, [selectedLayerConfigId]);
 
   useEffect(() => {
     const onPopState = () => {
-      const configIdFromPath = parseLayerConfigIdFromPath(layerConfigurations);
-      if (configIdFromPath !== selectedLayerConfigId) {
-        applyLayerConfig(configIdFromPath, mapRef.current?.getMap() ?? null);
+      const configIdFromQuery = parseLayerConfigIdFromQuery(layerConfigurations);
+      if (configIdFromQuery !== selectedLayerConfigId) {
+        applyLayerConfig(configIdFromQuery, mapRef.current?.getMap() ?? null);
       }
     };
 
@@ -304,7 +303,7 @@ function App() {
   const initMap = useCallback((map: maplibregl.Map) => {
     console.log("initMap");
 
-    registerProtocols(ppsZoomLevels);
+    registerProtocols(ppsZoomLevels, ppsZoomLevelMin);
     collapseAttributionControl(map);
     initialSourceDef.forEach(source => registerSource(map, source));
     applyLayerConfig(selectedLayerConfigId, map);
