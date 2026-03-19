@@ -155,7 +155,7 @@ function LayerControlContent({
                 title="Configure layer"
                 onClick={() => onConfigureLayer(layer.id)}
                 disabled={!isLayerEnabled}
-                style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
+                style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px', border: '0px' }}
               >
                 ⋮
               </button>

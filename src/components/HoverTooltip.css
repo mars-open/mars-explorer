@@ -1,0 +1,17 @@
+.app-hover-tooltip__trigger {
+  display: inline-flex;
+  width: 100%;
+}
+
+.app-hover-tooltip {
+  max-width: 320px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(13, 19, 33, 0.22);
+  background: rgba(16, 25, 45, 0.96);
+  color: #f7f9ff;
+  font-size: 0.74rem;
+  line-height: 1.25;
+  box-shadow: 0 8px 18px rgba(7, 12, 24, 0.38);
+  z-index: 2000;
+}
