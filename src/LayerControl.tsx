@@ -5,6 +5,7 @@ import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
 import { Checkbox, ColorArea, ColorField, ColorPicker, ColorSlider, ColorThumb, Input, SliderTrack, Switch, parseColor } from 'react-aria-components';
 import * as flatgeobuf from 'flatgeobuf';
+import './Checkbox.css';
 import './LayerControl.css';
 import {
   defaultLayerColor,
@@ -122,13 +123,13 @@ function LayerControlContent({
           >
             <Checkbox
               key={layer.id}
-              className="layer-control-layer-checkbox"
+              className="layer-control-layer-checkbox map-checkbox-root"
               isSelected={layerStates[layer.id] ?? true}
               onChange={() => toggleLayer(layer.id)}
             >
               {({ isSelected }) => (
                 <>
-                  <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+                  <span className="layer-control-layer-checkbox-box map-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
                   <span>{layer.name}</span>
                 </>
               )}
@@ -150,7 +151,7 @@ function LayerControlContent({
                 className="maplibregl-ctrl-icon"
                 title="Configure layer"
                 onClick={() => onConfigureLayer(layer.id)}
-                style={{ width: 28, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
+                style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               >
                 ⚙
               </button>
@@ -229,13 +230,13 @@ function LayerControlContent({
                       </select>
                     <label className="layer-control-field">
                       <Checkbox
-                        className="layer-control-layer-checkbox"
+                        className="layer-control-layer-checkbox map-checkbox-root"
                         isSelected={Boolean(layer.color.useAbsoluteValue)}
                         onChange={(selected) => onGradientUseAbsoluteChange(layer.id, selected)}
                       >
                         {({ isSelected }) => (
                           <>
-                            <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+                            <span className="layer-control-layer-checkbox-box map-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
                             <span>Use absolute value</span>
                           </>
                         )}
@@ -316,13 +317,13 @@ function LayerControlContent({
         style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
       >
         <Checkbox
-          className="layer-control-layer-checkbox"
+          className="layer-control-layer-checkbox map-checkbox-root"
           isSelected={terrainEnabled}
           onChange={(selected) => toogleTerrain(selected)}
         >
           {({ isSelected }) => (
             <>
-              <span className="layer-control-layer-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
+              <span className="layer-control-layer-checkbox-box map-checkbox-box" data-selected={isSelected ? 'true' : undefined} aria-hidden="true" />
               <span>Terrain</span>
             </>
           )}

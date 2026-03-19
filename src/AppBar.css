@@ -3,7 +3,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: 0 1.75rem;
+  padding: 0 1rem;
   min-height: 64px;
   background: linear-gradient(135deg, rgba(1, 37, 90, 0.92), rgba(4, 9, 26, 0.95));
   border-bottom: 1px solid rgba(255, 255, 255, 0.25);
@@ -59,7 +59,7 @@
 
 .app-bar__config select {
   min-width: 220px;
-  padding: 0.36rem 0.75rem;
+  padding: 0.36rem 0.5rem;
   border-radius: 8px;
   border: none;
   font-size: 0.85rem;

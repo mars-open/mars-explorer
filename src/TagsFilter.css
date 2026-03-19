@@ -1,0 +1,53 @@
+.tags-filter-content {
+  display: flex;
+  flex-direction: column;
+  margin: 5px;
+}
+
+.tags-filter-checkbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.tags-filter-toggle-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.tags-filter-open-button {
+  width: 30px;
+  height: 30px;
+  line-height: 28px;
+  padding: 0;
+}
+
+.tags-filter-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 175px;
+}
+
+.tags-filter-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.tags-filter-title {
+  height: 30px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: #f2efefff;
+  font-weight: 600;
+}
+
+.tags-filter-close-button {
+  width: 30px;
+  height: 30px;
+  line-height: 28px;
+  padding: 0;
+  border-top: 0;
+  border-bottom: 1px solid #f2efefff;
+}

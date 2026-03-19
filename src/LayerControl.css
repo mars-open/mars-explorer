@@ -5,46 +5,6 @@
 
 .layer-control-layer-checkbox {
 	flex: 1;
-	display: flex;
-	align-items: center;
-	height: 22px;
-	line-height: 1.2;
-	gap: 8px;
-	cursor: pointer;
-	font-size: 12px;
-	outline: none;
-}
-
-.layer-control-layer-checkbox-box {
-	position: relative;
-	width: 13px;
-	height: 13px;
-	border: 1px solid #a3a7b0;
-	border-radius: 4px;
-	background-color: #ffffff;
-	flex-shrink: 0;
-}
-
-.layer-control-layer-checkbox-box[data-selected] {
-	background-color: #0b5fff;
-	border-color: #0b5fff;
-}
-
-.layer-control-layer-checkbox-box[data-selected]::after {
-	content: "";
-	position: absolute;
-	top: 40%;
-	left: 50%;
-	width: 2px;
-	height: 9px;
-	border: solid #ffffff;
-	border-width: 0 2px 2px 0;
-	transform: translate(-50%, -50%) rotate(45deg);
-}
-
-.layer-control-layer-checkbox[data-focus-visible] .layer-control-layer-checkbox-box {
-	outline: 2px auto #3070ff;
-	outline-offset: 2px;
 }
 
 .layer-control-panel {

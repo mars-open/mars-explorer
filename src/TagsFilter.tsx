@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import maplibregl, { ControlPosition } from 'maplibre-gl';
 import { useControl, useMap } from 'react-map-gl/maplibre';
 import { createRoot } from 'react-dom/client';
+import { Checkbox } from 'react-aria-components';
+import './Checkbox.css';
+import './TagsFilter.css';
 
 
 
@@ -76,25 +79,32 @@ function TagsFilterContent({layerIds, possibleTags, map}: TagsFilterContentProps
   }, [tagConfig, layerIds, map]);
 
   return (
-      <div style={{display: "flex", flexDirection: "column", margin: 5 }}>
+      <div className="tags-filter-content">
         {possibleTags.map(tag => (
-          <div key={tag} className="items-center cursor-pointer mb-1" 
-            style={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'nowrap', gap: 6 }}
+          <div
+            key={tag}
+            className="items-center cursor-pointer mb-1"
+            style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
           >
-            <label className="items-center" htmlFor={`tag-${tag}`} 
-                style={{ flex: 1, minWidth: 0, height: 22, display: 'flex', alignItems: 'center' }}>
-                <input
-                  id={`tag-${tag}`} type="checkbox"
-                  checked={tagConfig[tag]?.selected || false}
-                  onChange={() => toggleTag(tag)}
-                  className="tags-filter-checkbox"
-                  data-mode={tagConfig[tag]?.mode}
-                  style={{ marginRight: 8 }}
-                />
-              {tag}
-            </label>
+            <Checkbox
+              className="map-checkbox-root tags-filter-checkbox"
+              isSelected={tagConfig[tag]?.selected || false}
+              onChange={() => toggleTag(tag)}
+            >
+              {({ isSelected }) => (
+                <>
+                  <span
+                    className="map-checkbox-box"
+                    data-selected={isSelected ? 'true' : undefined}
+                    data-mode={tagConfig[tag]?.mode}
+                    aria-hidden="true"
+                  />
+                  <span>{tag}</span>
+                </>
+              )}
+            </Checkbox>
             <button type="button" className="maplibregl-ctrl-icon" title="Toggle include/exclude"
-              style={{ height: 22, width: 22, lineHeight: '26px', fontSize: '0.75rem' }}
+              style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               onClick={() => toggleMode(tag)}
             >
               {tagConfig[tag]?.mode === 'exclude' ? '−' : '+'}
@@ -110,12 +120,11 @@ function TagsFilterWrapper({layerIds, possibleTags, map}: TagsFilterContentProps
 
   if (!open) {
     return (
-      <div style={{display: 'flex', flexDirection: 'column'}}>
+      <div className="tags-filter-toggle-shell">
         <button
-          className="maplibregl-ctrl-icon"
+          className="maplibregl-ctrl-icon tags-filter-open-button"
           title="Show tags filter"
           onClick={() => setOpen(true)}
-          style={{width: 30, height: 30, lineHeight: '28px', padding: 0}}
         >
           #
         </button>
@@ -124,16 +133,15 @@ function TagsFilterWrapper({layerIds, possibleTags, map}: TagsFilterContentProps
   }
 
   return (
-    <div style={{display: 'flex', flexDirection: 'column', minWidth: 175}}>
-      <div style={{display: 'flex', alignItems: 'center', marginBottom: 1}}>
-        <div style={{height: 30, flex: 1, display: 'flex', alignItems: 'center', padding: '0 10px', background: '#f2efefff', fontWeight: 600}}>
+    <div className="tags-filter-panel">
+      <div className="tags-filter-header">
+        <div className="tags-filter-title">
           Tags
         </div>
         <button
-          className="maplibregl-ctrl-icon"
+          className="maplibregl-ctrl-icon tags-filter-close-button"
           title="Hide tags filter"
           onClick={() => setOpen(false)}
-          style={{width: 30, height: 30, lineHeight: '28px', padding: 0, borderTop: "0px", borderBottom: "1px solid #f2efefff"}}
         >
           ×
         </button>
