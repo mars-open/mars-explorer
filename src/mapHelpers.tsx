@@ -210,11 +210,13 @@ export interface Layer {
 
 export type LayerType = 'circle' | 'line';
 
-export type GradientScaleId = 'green-orange-red' | 'white-blue';
+export type GradientScaleId = 'green-orange-red' | 'red-orange-green' | 'white-blue' | 'blue-white';
 
 export const gradientScales: Record<GradientScaleId, string[]> = {
   'green-orange-red': ['#1a9850', '#fdae61', '#d73027'],
-  'white-blue': ['#ffffff', '#0571b0']
+  'red-orange-green': ['#d73027', '#fdae61', '#1a9850'],
+  'white-blue': ['#ffffca', '#0571b0'],
+  'blue-white': ['#0571b0', '#ffffca']
 };
 
 export type LayerColorFixed = {
@@ -246,6 +248,8 @@ export const defaultLayerColor = (type: LayerType): LayerColor =>
     ? { mode: 'fixed', color: '#2427c6', target: 'fill' }
     : { mode: 'fixed', color: '#2427c6' };
 
+export const defaultGradientColor = '#bcbcbc';
+
 function gradientExpression(color: LayerColorGradient): unknown {
   const min = Number(color.min);
   const max = Number(color.max);
@@ -254,7 +258,7 @@ function gradientExpression(color: LayerColorGradient): unknown {
 
   if (!isRangeValid || !scale?.length || !color.attribute) {
     console.log('Invalid gradient configuration, falling back to color "grey". Details:', { min, max, scale, attribute: color.attribute });
-    return '#888888';
+    return defaultGradientColor;
   }
 
   if (scale.length === 1) return scale[0];
@@ -271,7 +275,12 @@ function gradientExpression(color: LayerColorGradient): unknown {
     expression.push(stop, scaleColor);
   });
 
-  return expression;
+  return [
+    'case',
+    ['!=', ['feature-state', 'coloringValue'], null],
+    expression,
+    defaultGradientColor
+  ];
 }
 
 export const layerColorExpression = (color: LayerColor): unknown => {

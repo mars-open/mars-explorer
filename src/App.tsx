@@ -85,6 +85,86 @@ const layerConfigurations: LayerConfiguration[] = (() => {
 
 const defaultLayerConfigId = 'ch';
 const layerConfigQueryParam = 'cfg';
+const layerColorsStorageKey = 'mars-explorer.layer-colors.v1';
+const tagsFilterStorageKey = 'mars-explorer.tags-filter-state.v1';
+
+type TagFilterMode = 'include' | 'exclude';
+type TagFilterEntry = { selected: boolean; mode: TagFilterMode };
+type TagFilterConfig = Record<string, TagFilterEntry>;
+
+const readPersistedLayerColors = (): Record<string, LayerColor> => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(layerColorsStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as Record<string, LayerColor>;
+  } catch {
+    return {};
+  }
+};
+
+const writePersistedLayerColors = (colorsByLayerId: Record<string, LayerColor>) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(layerColorsStorageKey, JSON.stringify(colorsByLayerId));
+};
+
+const readPersistedTagFilterConfig = (): TagFilterConfig => {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(tagsFilterStorageKey);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, { selected?: boolean; mode?: TagFilterMode }>;
+    const sanitizedEntries = Object.entries(parsed ?? {}).map(([tag, config]) => {
+      const selected = typeof config?.selected === 'boolean' ? config.selected : true;
+      const mode = config?.mode === 'exclude' ? 'exclude' : 'include';
+      return [tag, { selected, mode }] as const;
+    });
+    return Object.fromEntries(sanitizedEntries);
+  } catch {
+    return {};
+  }
+};
+
+const writePersistedTagFilterConfig = (tagConfig: TagFilterConfig) => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(tagsFilterStorageKey, JSON.stringify(tagConfig));
+};
+
+const deriveTagFilterConfig = (possibleTags: string[], persistedConfig: TagFilterConfig): TagFilterConfig =>
+  Object.fromEntries(
+    possibleTags.map(tag => [
+      tag,
+      persistedConfig[tag] ?? { selected: true, mode: 'include' as const }
+    ])
+  );
+
+const applyPersistedLayerColors = (sourceLayers: Layer[], persistedColorsByLayerId: Record<string, LayerColor>) =>
+  sourceLayers.map(layer => {
+    const persistedColor = persistedColorsByLayerId[layer.id];
+    if (!persistedColor) return layer;
+
+    if (layer.type === 'circle') {
+      const currentTarget = 'target' in layer.color ? layer.color.target : undefined;
+      const persistedTarget = 'target' in persistedColor ? persistedColor.target : undefined;
+
+      return {
+        ...layer,
+        color: {
+          ...persistedColor,
+          ...(persistedTarget ? { target: persistedTarget } : currentTarget ? { target: currentTarget } : {})
+        }
+      };
+    }
+
+    return {
+      ...layer,
+      color: persistedColor
+    };
+  });
 
 const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer => {
   if (!override) return layer;
@@ -132,11 +212,20 @@ function App() {
   const mapRef = useRef<MapRef>(null);
   const gbmUploadInputRef = useRef<HTMLInputElement>(null);
   const prevExpandedFeatureRef = useRef<SelectedFeature | null>(null);
-  const [layers, setLayers] = useState<Layer[]>(() => cloneLayers(initialLayerConfig.layers, initialLayerConfig.colorOverrides));
+  const [persistedLayerColors, setPersistedLayerColors] = useState<Record<string, LayerColor>>(() => readPersistedLayerColors());
+  const [persistedTagFilterConfig, setPersistedTagFilterConfig] = useState<TagFilterConfig>(() => readPersistedTagFilterConfig());
+  const [layers, setLayers] = useState<Layer[]>(() =>
+    applyPersistedLayerColors(
+      cloneLayers(initialLayerConfig.layers, initialLayerConfig.colorOverrides),
+      persistedLayerColors
+    )
+  );
   const [selectedLayerConfigId, setSelectedLayerConfigId] = useState(initialLayerConfig.id);
   const selectedLayerConfig = layerConfigurations.find(cfg => cfg.id === selectedLayerConfigId)
     ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
     ?? layerConfigurations[0];
+  const filterableTags = selectedLayerConfig.filterableTags ?? [];
+  const tagFilterConfig = deriveTagFilterConfig(filterableTags, persistedTagFilterConfig);
   const interactiveLayerIds = layers
     .filter(layer => selectedLayerConfig.interactive.includes(layer.id))
     .map(layer => layer.id);
@@ -146,7 +235,10 @@ function App() {
     const config = layerConfigurations.find(cfg => cfg.id === configId)
       ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
       ?? layerConfigurations[0];
-    const clonedLayers = cloneLayers(config.layers, config.colorOverrides);
+    const clonedLayers = applyPersistedLayerColors(
+      cloneLayers(config.layers, config.colorOverrides),
+      persistedLayerColors
+    );
     setSelectedLayerConfigId(config.id);
     setLayers(clonedLayers);
 
@@ -161,7 +253,15 @@ function App() {
 
     clonedLayers.forEach(layer => registerLayerAsync(map, layer));
     prevLayerIdsRef.current = clonedLayers.map(layer => layer.id);
-  }, [layers]);
+  }, [layers, persistedLayerColors]);
+
+  useEffect(() => {
+    writePersistedLayerColors(persistedLayerColors);
+  }, [persistedLayerColors]);
+
+  useEffect(() => {
+    writePersistedTagFilterConfig(persistedTagFilterConfig);
+  }, [persistedTagFilterConfig]);
 
   const handleLayerConfigChange = useCallback((configId: string) => {
     applyLayerConfig(configId, mapRef.current?.getMap() ?? null);
@@ -203,6 +303,11 @@ function App() {
   }, []);
 
   const handleLayerColorChange = useCallback((layerId: string, color: LayerColor) => {
+    setPersistedLayerColors(prev => ({
+      ...prev,
+      [layerId]: color
+    }));
+
     setLayers(prev =>
       prev.map(layer =>
         layer.id === layerId
@@ -210,6 +315,32 @@ function App() {
           : layer
       )
     );
+  }, []);
+
+  const handleToggleTagFilterTag = useCallback((tag: string) => {
+    setPersistedTagFilterConfig(prev => {
+      const current = prev[tag] ?? { selected: true, mode: 'include' as const };
+      return {
+        ...prev,
+        [tag]: {
+          ...current,
+          selected: !current.selected
+        }
+      };
+    });
+  }, []);
+
+  const handleToggleTagFilterMode = useCallback((tag: string) => {
+    setPersistedTagFilterConfig(prev => {
+      const current = prev[tag] ?? { selected: true, mode: 'include' as const };
+      return {
+        ...prev,
+        [tag]: {
+          ...current,
+          mode: current.mode === 'include' ? 'exclude' : 'include'
+        }
+      };
+    });
   }, []);
 
   const handleGbmUploadClick = useCallback(() => {
@@ -411,7 +542,14 @@ function App() {
           />
           <SelectedFeaturesPanel selectedFeatures={selectedFeatures} onExpandedChange={setExpandedFeature}/>
           <LayerControl layers={layers} onAddLayer={handleLayerAdded} onRemoveLayer={handleLayerRemoved} onLayerColorChange={handleLayerColorChange}/>
-          <TagsFilter layerIds={interactiveLayerIds} possibleTags={selectedLayerConfig.filterableTags ?? []} position="top-right"/>
+          <TagsFilter
+            layerIds={interactiveLayerIds}
+            possibleTags={filterableTags}
+            tagConfig={tagFilterConfig}
+            onToggleTag={handleToggleTagFilterTag}
+            onToggleMode={handleToggleTagFilterMode}
+            position="top-right"
+          />
           <CoordinatesDisplay />
           <AttributionControl position="top-right" compact={true} />
         </Map>

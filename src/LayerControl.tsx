@@ -39,8 +39,12 @@ interface LayerControlProps {
 interface LayerControlContentProps {
   layers: Layer[];
   map: maplibregl.Map | null;
+  layerStates: Record<string, boolean>;
+  terrainEnabled: boolean;
   onRemoveLayer: (id: string) => void;
   onConfigureLayer: (layerId: string) => void;
+  onToggleLayer: (layerId: string) => void;
+  onToggleTerrain: (enabled: boolean) => void;
   onColorChange: (layerId: string, colorHex: string) => void;
   onColorModeChange: (layerId: string, mode: 'fixed' | 'gradient') => void;
   onGradientAttributeChange: (layerId: string, attribute: string) => void;
@@ -50,6 +54,29 @@ interface LayerControlContentProps {
   gradientRangeErrorByLayer: Record<string, string | undefined>;
   attributeStatsByLayer: Record<string, NumericAttributeStats[]>;
   activeLayerId: string | undefined;
+}
+
+const LAYER_CONTROL_STATE_STORAGE_KEY = 'mars-explorer.layer-control-state.v1';
+
+interface LayerControlPersistedState {
+  layerStates?: Record<string, boolean>;
+  terrainEnabled?: boolean;
+}
+
+function readLayerControlPersistedState(): LayerControlPersistedState {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(LAYER_CONTROL_STATE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as LayerControlPersistedState;
+    return {
+      layerStates: parsed.layerStates && typeof parsed.layerStates === 'object' ? parsed.layerStates : {},
+      terrainEnabled: typeof parsed.terrainEnabled === 'boolean' ? parsed.terrainEnabled : false
+    };
+  } catch {
+    return {};
+  }
 }
 
 function roundToSignificantDigits(value: number, digits = 3): number {
@@ -69,8 +96,12 @@ function toAbsoluteRange(min: number, max: number): { min: number; max: number }
 function LayerControlContent({
   layers,
   map,
+  layerStates,
+  terrainEnabled,
   onRemoveLayer,
   onConfigureLayer,
+  onToggleLayer,
+  onToggleTerrain,
   onColorChange,
   onColorModeChange,
   onGradientAttributeChange,
@@ -81,37 +112,7 @@ function LayerControlContent({
   attributeStatsByLayer,
   activeLayerId
 }: LayerControlContentProps) {
-  const [layerStates, setLayerStates] = useState<Record<string, boolean>>({});
-  const [terrainEnabled, setTerrainEnabled] = useState<boolean>(false);
-
   if (!map || !layers) return null;
-
-  function toggleLayer(layerId: string) {
-    if (!map) return;
-    console.log(`Toggling layer ${layerId}`);
-    const currentlyVisible = layerStates[layerId] ?? true;
-    const visibility = currentlyVisible ? 'none' : 'visible';
-    map.setLayoutProperty(layerId, 'visibility', visibility);
-    setLayerStates(prev => ({ ...prev, [layerId]: !currentlyVisible }));
-  }
-
-  function toogleTerrain(enabled: boolean) {
-    if (!map) return;    
-    if (enabled) {
-      // Enable terrain if source exists
-      map.setTerrain({ source: 'pmt-3d', exaggeration: 1 });
-      if (!map.getLayer('hillshade')) {
-        map.addLayer({ id: 'hillshade', type: 'hillshade', source: 'pmt-3d', paint: {'hillshade-shadow-color': '#473B24'}});
-      }
-    } else {
-      // Disable terrain
-      map.setTerrain(null);
-      if (map.getLayer('hillshade')) {
-        map.removeLayer('hillshade');
-      }
-    }
-    setTerrainEnabled(enabled);
-  }
 
   return (
 
@@ -125,7 +126,7 @@ function LayerControlContent({
               key={layer.id}
               className="layer-control-layer-checkbox map-checkbox-root"
               isSelected={layerStates[layer.id] ?? true}
-              onChange={() => toggleLayer(layer.id)}
+              onChange={() => onToggleLayer(layer.id)}
             >
               {({ isSelected }) => (
                 <>
@@ -319,7 +320,7 @@ function LayerControlContent({
         <Checkbox
           className="layer-control-layer-checkbox map-checkbox-root"
           isSelected={terrainEnabled}
-          onChange={(selected) => toogleTerrain(selected)}
+          onChange={(selected) => onToggleTerrain(selected)}
         >
           {({ isSelected }) => (
             <>
@@ -343,12 +344,49 @@ interface LayerControlWrapperProps {
 
 function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerColorChange}: LayerControlWrapperProps) {
   const [open, setOpen] = useState(false);
+  const [layerStates, setLayerStates] = useState<Record<string, boolean>>(() => readLayerControlPersistedState().layerStates ?? {});
+  const [terrainEnabled, setTerrainEnabled] = useState<boolean>(() => Boolean(readLayerControlPersistedState().terrainEnabled));
   const [activeLayerId, setActiveLayerId] = useState<string | undefined>(undefined);
   const [attributeStatsByLayer, setAttributeStatsByLayer] = useState<Record<string, NumericAttributeStats[]>>({});
   const [gradientRangeErrorByLayer, setGradientRangeErrorByLayer] = useState<Record<string, string | undefined>>({});
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastFixedColorByLayerRef = useRef<Record<string, LayerColorFixed>>({});
   const lastGradientColorByLayerRef = useRef<Record<string, LayerColorGradient>>({});
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      LAYER_CONTROL_STATE_STORAGE_KEY,
+      JSON.stringify({ layerStates, terrainEnabled })
+    );
+  }, [layerStates, terrainEnabled]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    layers.forEach(layer => {
+      if (!map.getLayer(layer.id)) return;
+      const isVisible = layerStates[layer.id] ?? true;
+      map.setLayoutProperty(layer.id, 'visibility', isVisible ? 'visible' : 'none');
+    });
+  }, [layerStates, layers, map]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    if (terrainEnabled) {
+      map.setTerrain({ source: 'pmt-3d', exaggeration: 1 });
+      if (!map.getLayer('hillshade')) {
+        map.addLayer({ id: 'hillshade', type: 'hillshade', source: 'pmt-3d', paint: {'hillshade-shadow-color': '#473B24'}});
+      }
+      return;
+    }
+
+    map.setTerrain(null);
+    if (map.getLayer('hillshade')) {
+      map.removeLayer('hillshade');
+    }
+  }, [map, terrainEnabled]);
 
   useEffect(() => {
     layers.forEach((layer) => {
@@ -474,8 +512,11 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     };
 
     syncGradientState();
+    // Also recalculate after initial source/tile loading settles.
+    map.on('idle', syncGradientState);
     map.on('moveend', syncGradientState);
     return () => {
+      map.off('idle', syncGradientState);
       map.off('moveend', syncGradientState);
     };
   }, [layers, map, populateColoringValueState]);
@@ -563,6 +604,18 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
       ensureLayerStats(layer);
     }
     setActiveLayerId(prev => prev === layerId ? undefined : layerId);
+  };
+
+  const handleToggleLayer = (layerId: string) => {
+    console.log(`Toggling layer ${layerId}`);
+    setLayerStates(prev => ({
+      ...prev,
+      [layerId]: !(prev[layerId] ?? true)
+    }));
+  };
+
+  const handleToggleTerrain = (enabled: boolean) => {
+    setTerrainEnabled(enabled);
   };
 
   const handleColorChange = (layerId: string, colorHex: string) => {
@@ -752,6 +805,11 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
     if (activeLayerId === layerId) {
       setActiveLayerId(undefined);
     }
+    setLayerStates(prev => {
+      const next = { ...prev };
+      delete next[layerId];
+      return next;
+    });
     onRemoveLayer(layerId);
   };
 
@@ -829,8 +887,12 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
       <LayerControlContent
         layers={layers}
         map={map}
+        layerStates={layerStates}
+        terrainEnabled={terrainEnabled}
         onRemoveLayer={handleRemoveLayer}
         onConfigureLayer={handleConfigureLayer}
+        onToggleLayer={handleToggleLayer}
+        onToggleTerrain={handleToggleTerrain}
         onColorChange={handleColorChange}
         onColorModeChange={handleColorModeChange}
         onGradientAttributeChange={handleGradientAttributeChange}
