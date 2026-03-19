@@ -92,6 +92,10 @@ type TagFilterMode = 'include' | 'exclude';
 type TagFilterEntry = { selected: boolean; mode: TagFilterMode };
 type TagFilterConfig = Record<string, TagFilterEntry>;
 
+const defaultTagFilterByTag: Partial<Record<string, TagFilterEntry>> = {
+  Tram: { selected: true, mode: 'exclude' }
+};
+
 const readPersistedLayerColors = (): Record<string, LayerColor> => {
   if (typeof window === 'undefined') return {};
 
@@ -138,7 +142,7 @@ const deriveTagFilterConfig = (possibleTags: string[], persistedConfig: TagFilte
   Object.fromEntries(
     possibleTags.map(tag => [
       tag,
-      persistedConfig[tag] ?? { selected: true, mode: 'include' as const }
+      persistedConfig[tag] ?? defaultTagFilterByTag[tag] ?? { selected: true, mode: 'include' as const }
     ])
   );
 

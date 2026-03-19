@@ -77,31 +77,41 @@ function TagsFilterWrapper({layerIds, possibleTags, map, tagConfig, onToggleTag,
   useEffect(() => {
     if (!map) return;
 
-    const includedTags = Object.entries(tagConfig)
-      .filter(([, config]) => config.selected && config.mode === 'include')
-      .map(([t]) => t);
+    const applyFilters = () => {
+      const includedTags = Object.entries(tagConfig)
+        .filter(([, config]) => config.selected && config.mode === 'include')
+        .map(([t]) => t);
 
-    const excludedTags = Object.entries(tagConfig)
-      .filter(([, config]) => config.selected && config.mode === 'exclude')
-      .map(([t]) => t);
+      const excludedTags = Object.entries(tagConfig)
+        .filter(([, config]) => config.selected && config.mode === 'exclude')
+        .map(([t]) => t);
 
-    // Apply filter to all layers even when the panel UI is collapsed.
-    layerIds.forEach(layerId => {
-      if (!map.getLayer(layerId)) return;
-      if (includedTags.length === 0) {
-        map.setFilter(layerId, null);
-        return;
-      }
+      // Apply filter to all layers even when the panel UI is collapsed.
+      layerIds.forEach(layerId => {
+        if (!map.getLayer(layerId)) return;
+        if (includedTags.length === 0) {
+          map.setFilter(layerId, null);
+          return;
+        }
 
-      const includeFilters = includedTags.map(tag => ['in', tag, ['get', 'tags']]);
-      const excludeFilters = excludedTags.map(tag => ['!', ['in', tag, ['get', 'tags']]]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const filterExpression: any = ['all', ['any', ...includeFilters], ['all', ...excludeFilters]];
-      map.setFilter(layerId, filterExpression);
-    });
+        const includeFilters = includedTags.map(tag => ['in', tag, ['get', 'tags']]);
+        const excludeFilters = excludedTags.map(tag => ['!', ['in', tag, ['get', 'tags']]]);
+        const filterExpression = ['all', ['any', ...includeFilters], ['all', ...excludeFilters]] as unknown[];
+        map.setFilter(layerId, filterExpression as maplibregl.FilterSpecification);
+      });
 
-    console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`, layerIds);
-  }, [layerIds, tagConfig]);
+      console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`, layerIds);
+    };
+
+    applyFilters();
+    // Re-apply after style/layer updates (e.g., initial load or config switch).
+    map.on('idle', applyFilters);
+    map.on('styledata', applyFilters);
+    return () => {
+      map.off('idle', applyFilters);
+      map.off('styledata', applyFilters);
+    };
+  }, [layerIds, map, tagConfig]);
 
   if (!open) {
     return (
