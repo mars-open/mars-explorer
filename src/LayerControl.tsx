@@ -154,7 +154,7 @@ function LayerControlContent({
                 onClick={() => onConfigureLayer(layer.id)}
                 style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               >
-                ⚙
+                ⋮
               </button>
             )}
           </div>
@@ -864,7 +864,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
         }}
       />
       <div style={{display: 'flex', alignItems: 'center', marginBottom: 1}}>
-        <div style={{height: 30, flex: 1, display: 'flex', alignItems: 'center', padding: '0 10px', background: '#f2efefff', fontWeight: 600}}>
+        <div style={{height: 30, flex: 1, display: 'flex', alignItems: 'center', padding: '0 10px', background: '#f2efefff', fontWeight: 600, borderTopLeftRadius: 4}}>
           Layers
         </div>
         <button
