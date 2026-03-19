@@ -1,7 +1,7 @@
 import { AttributionControl, Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "./AppBar";
 import { LayerControl } from "./LayerControl";
 import { TagsFilter } from "./TagsFilter";
@@ -9,7 +9,7 @@ import { CoordinatesDisplay } from "./CoordinatesDisplay";
 import { SelectedFeaturesPanel, SelectedFeature } from "./SelectedFeaturesPanel";
 import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
-import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
+import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, reuseArrayReferenceIfEqual, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
 import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
 import { importGbmZipAsLayer } from "./gbm";
@@ -225,10 +225,22 @@ function App() {
     ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
     ?? layerConfigurations[0];
   const filterableTags = selectedLayerConfig.filterableTags ?? [];
-  const tagFilterConfig = deriveTagFilterConfig(filterableTags, persistedTagFilterConfig);
-  const interactiveLayerIds = layers
-    .filter(layer => selectedLayerConfig.interactive.includes(layer.id))
-    .map(layer => layer.id);
+  const tagFilterConfig = useMemo(
+    () => deriveTagFilterConfig(filterableTags, persistedTagFilterConfig),
+    [filterableTags, persistedTagFilterConfig]
+  );
+  const interactiveLayerIdsRef = useRef<string[]>([]);
+  const interactiveLayerIds = useMemo(
+    () => {
+      const nextLayerIds = layers
+        .filter(layer => selectedLayerConfig.interactive.includes(layer.id))
+        .map(layer => layer.id);
+      const stableLayerIds = reuseArrayReferenceIfEqual(nextLayerIds, interactiveLayerIdsRef.current);
+      interactiveLayerIdsRef.current = stableLayerIds;
+      return stableLayerIds;
+    },
+    [layers, selectedLayerConfig.interactive]
+  );
   const prevLayerIdsRef = useRef<string[]>([]);
 
   const applyLayerConfig = useCallback((configId: string, map?: maplibregl.Map | null) => {

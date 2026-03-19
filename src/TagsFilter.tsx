@@ -100,8 +100,8 @@ function TagsFilterWrapper({layerIds, possibleTags, map, tagConfig, onToggleTag,
       map.setFilter(layerId, filterExpression);
     });
 
-    console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`);
-  }, [layerIds, map, tagConfig]);
+    console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`, layerIds);
+  }, [layerIds, tagConfig]);
 
   if (!open) {
     return (

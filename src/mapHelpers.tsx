@@ -250,6 +250,16 @@ export const defaultLayerColor = (type: LayerType): LayerColor =>
 
 export const defaultGradientColor = '#bcbcbc';
 
+export function reuseArrayReferenceIfEqual<T>(
+  nextValues: T[],
+  previousValues: T[],
+  isEqual: (left: T, right: T) => boolean = Object.is
+): T[] {
+  if (nextValues.length !== previousValues.length) return nextValues;
+  const hasDifference = previousValues.some((previousValue, idx) => !isEqual(previousValue, nextValues[idx]));
+  return hasDifference ? nextValues : previousValues;
+}
+
 function gradientExpression(color: LayerColorGradient): unknown {
   const min = Number(color.min);
   const max = Number(color.max);
