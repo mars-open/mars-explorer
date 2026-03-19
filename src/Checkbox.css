@@ -31,6 +31,7 @@
   color: #ffffff;
   font-size: 12px;
   line-height: 1;
+  padding-top: 1px;
 }
 
 .map-checkbox-root[data-focus-visible] .map-checkbox-box {
@@ -45,6 +46,7 @@
 
 .map-checkbox-box[data-mode="exclude"][data-selected]::after {
   content: "\00D7";
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
+  padding-top: 1px;
 }

@@ -117,15 +117,17 @@ function LayerControlContent({
   return (
 
     <div className="layer-control-content" style={{display: "flex", flexDirection: "column", margin: 5 }}>
-      {layers.map(layer => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} key={layer.id}>
+      {layers.map(layer => {
+        const isLayerEnabled = layerStates[layer.id] ?? true;
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }} key={layer.id}>
           <div className="items-center cursor-pointer mb-1" 
             style={{ display: 'flex', flexDirection: 'row', gap: 4, alignItems: 'center' }}
           >
             <Checkbox
               key={layer.id}
               className="layer-control-layer-checkbox map-checkbox-root"
-              isSelected={layerStates[layer.id] ?? true}
+              isSelected={isLayerEnabled}
               onChange={() => onToggleLayer(layer.id)}
             >
               {({ isSelected }) => (
@@ -152,13 +154,14 @@ function LayerControlContent({
                 className="maplibregl-ctrl-icon"
                 title="Configure layer"
                 onClick={() => onConfigureLayer(layer.id)}
+                disabled={!isLayerEnabled}
                 style={{ width: 22, height: 22, lineHeight: '22px', padding: 0, fontSize: '12px' }}
               >
                 ⋮
               </button>
             )}
           </div>
-          {activeLayerId === layer.id && (
+          {activeLayerId === layer.id && isLayerEnabled && (
             <div className="layer-control-panel">
               <div className="layer-control-panel-stack">
                 <div className="layer-control-switch-row">
@@ -310,8 +313,9 @@ function LayerControlContent({
               </div>
             </div>
           )}
-        </div>
-      ))}
+          </div>
+        );
+      })}
       <div
         key="terrain"
         className="items-center cursor-pointer mb-1"
@@ -608,10 +612,16 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
 
   const handleToggleLayer = (layerId: string) => {
     console.log(`Toggling layer ${layerId}`);
-    setLayerStates(prev => ({
-      ...prev,
-      [layerId]: !(prev[layerId] ?? true)
-    }));
+    setLayerStates(prev => {
+      const nextEnabled = !(prev[layerId] ?? true);
+      if (!nextEnabled) {
+        setActiveLayerId(currentActive => currentActive === layerId ? undefined : currentActive);
+      }
+      return {
+        ...prev,
+        [layerId]: nextEnabled
+      };
+    });
   };
 
   const handleToggleTerrain = (enabled: boolean) => {
