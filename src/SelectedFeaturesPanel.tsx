@@ -17,6 +17,7 @@ export class SelectedFeature {
 interface SelectedFeaturesPanelProps {
   selectedFeatures: SelectedFeature[];
   onExpandedChange?: (feature: SelectedFeature | null) => void;
+  onSelectPpsAlongEdge?: (edgeFeature: SelectedFeature) => void;
 }
 
 function formatValue(value: unknown): string {
@@ -181,7 +182,12 @@ function Chip({ label }: { label: string }) {
   );
 }
 
-export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange }: SelectedFeaturesPanelProps) {
+function isEdgeLineFeature(sf: SelectedFeature): boolean {
+  const geometryType = sf.feature.geometry?.type;
+  return sf.layerName === 'edges' && (geometryType === 'LineString' || geometryType === 'MultiLineString');
+}
+
+export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange, onSelectPpsAlongEdge }: SelectedFeaturesPanelProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(0);
   
   const MAX_DISPLAY = 100;
@@ -226,47 +232,103 @@ export function SelectedFeaturesPanel({ selectedFeatures, onExpandedChange }: Se
       backgroundColor: 'white',
       borderRadius: 8,
       boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-      overflowY: 'auto',
+      overflow: 'hidden',
+      overflowX: 'hidden',
       zIndex: 1,
       fontFamily: 'system-ui, -apple-system, sans-serif',
+      display: 'flex',
+      flexDirection: 'column'
     }}>
-      <div style={{padding: 12, borderBottom: '1px solid #e0e0e0', fontWeight: 'bold'}}>
+      <div style={{
+        padding: 12,
+        borderBottom: '1px solid #e0e0e0',
+        fontWeight: 'bold',
+        backgroundColor: 'white'
+      }}>
         {headerText}
       </div>
-      {displayFeatures.map((sf, idx) => (
-        <div key={sf.feature.id} style={{borderBottom: '1px solid #f0f0f0'}}>
-          <button
-            onClick={() => setExpandedIndex(expandedIndex === idx ? null : idx)}
-            style={{
-              width: '100%',
-              padding: 12,
-              textAlign: 'left',
-              border: 'none',
-              backgroundColor: expandedIndex === idx ? '#f2EFEF' : 'transparent',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 500,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-            <span>{getFeatureTitle(sf)}</span>
-            <span style={{color: '#7b7b7b', fontSize: 10}}>{expandedIndex === idx ? '▼' : '▶'}</span>
-          </button>
-          {expandedIndex === idx && (
-            <div style={{padding: 12, backgroundColor: '#fafafa'}}>
-              <ul style={{paddingLeft: 0, margin: 0, listStyle: 'none', fontSize: 12}}>
-                {Object.entries(sf.feature.properties || {})
-                  .filter(([k, v]) => k == "id_positionpoint" || v !== sf.feature.id)
-                  .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-                  .map(([k, v]) => (
-                    <PropertyRow key={k} name={k} value={v} renderTagsAsChips={k === 'tags'} />
-                  ))}
-              </ul>
+      <div style={{ overflowY: 'auto', overflowX: 'hidden', flex: 1 }}>
+        {displayFeatures.map((sf, idx) => (
+          <div key={sf.feature.id} style={{borderBottom: '1px solid #f0f0f0'}}>
+            <div
+              style={{
+                width: '100%',
+                padding: '6px 2px 6px 6px',
+                boxSizing: 'border-box',
+                backgroundColor: expandedIndex === idx ? '#f2EFEF' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2
+              }}
+            >
+              <button
+                onClick={() => setExpandedIndex(expandedIndex === idx ? null : idx)}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: 4,
+                  textAlign: 'left',
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center'
+                }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getFeatureTitle(sf)}</span>
+              </button>
+              {expandedIndex === idx && isEdgeLineFeature(sf) && onSelectPpsAlongEdge && (
+                <button
+                  type="button"
+                  onClick={() => onSelectPpsAlongEdge(sf)}
+                  style={{
+                    border: '1px solid #d6d6d6',
+                    backgroundColor: '#ffffff',
+                    borderRadius: 4,
+                    padding: '2px 6px',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                  title="Select pps on edge within 25 cm"
+                >
+                  +pps
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setExpandedIndex(expandedIndex === idx ? null : idx)}
+                style={{
+                  border: 'none',
+                  backgroundColor: 'transparent',
+                  color: '#7b7b7b',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: '4px 6px'
+                }}
+                title={expandedIndex === idx ? 'Collapse' : 'Expand'}
+              >
+                {expandedIndex === idx ? '▼' : '▶'}
+              </button>
             </div>
-          )}
-        </div>
-      ))}
+            {expandedIndex === idx && (
+              <div style={{padding: 12, backgroundColor: '#fafafa'}}>
+                <ul style={{paddingLeft: 0, margin: 0, listStyle: 'none', fontSize: 12}}>
+                  {Object.entries(sf.feature.properties || {})
+                    .filter(([k, v]) => k == "id_positionpoint" || v !== sf.feature.id)
+                    .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+                    .map(([k, v]) => (
+                      <PropertyRow key={k} name={k} value={v} renderTagsAsChips={k === 'tags'} />
+                    ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

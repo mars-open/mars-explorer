@@ -89,6 +89,7 @@ const defaultLayerConfigId = 'ch';
 const layerConfigQueryParam = 'cfg';
 const layerColorsStorageKey = 'mars-explorer.layer-colors.v1';
 const tagsFilterStorageKey = 'mars-explorer.tags-filter-state.v1';
+const edgePpsSelectionToleranceMeters = 0.25;
 
 type TagFilterMode = 'include' | 'exclude';
 type TagFilterEntry = { selected: boolean; mode: TagFilterMode };
@@ -200,6 +201,75 @@ const formatUrlForLayerConfig = (configId: string) => {
   url.searchParams.set(layerConfigQueryParam, configId);
   return `${url.pathname}${url.search}${url.hash}`;
 };
+
+function projectLngLatToMeters([lng, lat]: [number, number], refLatRad: number): { x: number; y: number } {
+  const metersPerDegLat = 111132;
+  const metersPerDegLng = 111320 * Math.cos(refLatRad);
+  return {
+    x: lng * metersPerDegLng,
+    y: lat * metersPerDegLat
+  };
+}
+
+function distancePointToSegmentMeters(
+  point: [number, number],
+  segmentStart: [number, number],
+  segmentEnd: [number, number]
+): number {
+  const refLatRad = (point[1] * Math.PI) / 180;
+  const p = projectLngLatToMeters(point, refLatRad);
+  const a = projectLngLatToMeters(segmentStart, refLatRad);
+  const b = projectLngLatToMeters(segmentEnd, refLatRad);
+  const abX = b.x - a.x;
+  const abY = b.y - a.y;
+  const apX = p.x - a.x;
+  const apY = p.y - a.y;
+  const abSq = abX * abX + abY * abY;
+
+  if (abSq === 0) {
+    return Math.hypot(apX, apY);
+  }
+
+  const t = Math.max(0, Math.min(1, (apX * abX + apY * abY) / abSq));
+  const closestX = a.x + t * abX;
+  const closestY = a.y + t * abY;
+  return Math.hypot(p.x - closestX, p.y - closestY);
+}
+
+function isPointOnLineWithinTolerance(
+  point: [number, number],
+  lineCoordinates: [number, number][],
+  toleranceMeters: number
+): boolean {
+  if (lineCoordinates.length < 2) return false;
+
+  for (let i = 0; i < lineCoordinates.length - 1; i += 1) {
+    if (distancePointToSegmentMeters(point, lineCoordinates[i], lineCoordinates[i + 1]) <= toleranceMeters) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isPointOnAnyLineWithinTolerance(
+  point: [number, number],
+  lines: [number, number][][],
+  toleranceMeters: number
+): boolean {
+  return lines.some(line => isPointOnLineWithinTolerance(point, line, toleranceMeters));
+}
+
+function getLinePartsFromFeatureGeometry(geometry: GeoJSON.Geometry | null | undefined): [number, number][][] {
+  if (!geometry) return [];
+  if (geometry.type === 'LineString') {
+    return [geometry.coordinates as [number, number][]];
+  }
+  if (geometry.type === 'MultiLineString') {
+    return geometry.coordinates as [number, number][][];
+  }
+  return [];
+}
 // "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
 
 
@@ -383,6 +453,70 @@ function App() {
     }
   }, [handleLayerAdded, selectedLayerConfigId]);
 
+  const handleSelectPpsAlongEdge = useCallback((edgeFeature: SelectedFeature) => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+
+    const lineParts = getLinePartsFromFeatureGeometry(edgeFeature.feature.geometry);
+    if (lineParts.length === 0) {
+      notifyAppToast({ level: 'warning', title: 'Selected feature is not a line edge.' });
+      return;
+    }
+
+    const ppsFeatures = map.querySourceFeatures('pps', { sourceLayer: 'pps' });
+    const matchedById = new globalThis.Map<string | number, MapGeoJSONFeature>();
+
+    ppsFeatures.forEach((ppsFeature) => {
+      if (ppsFeature.geometry.type !== 'Point') return;
+
+      const pointCoordinates = ppsFeature.geometry.coordinates as [number, number];
+      if (!isPointOnAnyLineWithinTolerance(pointCoordinates, lineParts, edgePpsSelectionToleranceMeters)) {
+        return;
+      }
+
+      const candidateId = ppsFeature.id ?? (typeof ppsFeature.properties?.token === 'string' ? ppsFeature.properties.token : undefined);
+      if (candidateId === undefined || candidateId === null) return;
+
+      const featureWithLayer = {
+        ...ppsFeature,
+        layer: {
+          id: 'pps'
+        }
+      } as MapGeoJSONFeature;
+
+      matchedById.set(candidateId, featureWithLayer);
+    });
+
+    if (matchedById.size === 0) {
+      notifyAppToast({
+        level: 'info',
+        title: 'No pps found on edge.',
+        description: 'No loaded pps features were within 25 cm of the selected edge.'
+      });
+      return;
+    }
+
+    setSelectedFeatures((prevSelected) => {
+      const dedupedByLayerAndId = new globalThis.Map<string, SelectedFeature>();
+      prevSelected.forEach((sf) => {
+        dedupedByLayerAndId.set(`${sf.layerName}:${String(sf.feature.id)}`, sf);
+      });
+
+      matchedById.forEach((feature) => {
+        const sf = new SelectedFeature(feature, edgeFeature.lngLat);
+        dedupedByLayerAndId.set(`pps:${String(sf.feature.id)}`, sf);
+      });
+
+      return Array.from(dedupedByLayerAndId.values());
+    });
+
+    notifyAppToast({
+      level: 'success',
+      title: 'pps selected on edge.',
+      description: `Added ${matchedById.size} pps features within 25 cm of the selected edge.`
+    });
+  }, []);
+
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
   const getFeatureIdentifier = (map: maplibregl.Map, layerId: string | undefined, featureId: string | number) => {
     if (!layerId) return null;
@@ -558,7 +692,11 @@ function App() {
               }
             }}
           />
-          <SelectedFeaturesPanel selectedFeatures={selectedFeatures} onExpandedChange={setExpandedFeature}/>
+          <SelectedFeaturesPanel
+            selectedFeatures={selectedFeatures}
+            onExpandedChange={setExpandedFeature}
+            onSelectPpsAlongEdge={handleSelectPpsAlongEdge}
+          />
           <LayerControl layers={layers} onAddLayer={handleLayerAdded} onRemoveLayer={handleLayerRemoved} onLayerColorChange={handleLayerColorChange}/>
           <TagsFilter
             layerIds={interactiveLayerIds}
