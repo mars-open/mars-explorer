@@ -33,6 +33,13 @@ interface TagsFilterWrapperProps {
   onToggleMode: (tag: string) => void;
 }
 
+function areFiltersEqual(
+  a: maplibregl.FilterSpecification | null | undefined,
+  b: maplibregl.FilterSpecification | null | undefined,
+) {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+}
+
 function TagsFilterContent({possibleTags, tagConfig, onToggleTag, onToggleMode}: TagsFilterContentProps) {
   return (
       <div className="tags-filter-content">
@@ -90,17 +97,23 @@ function TagsFilterWrapper({layerIds, possibleTags, map, tagConfig, onToggleTag,
       layerIds.forEach(layerId => {
         if (!map.getLayer(layerId)) return;
         if (includedTags.length === 0) {
-          map.setFilter(layerId, null);
+          const currentFilter = map.getFilter(layerId) as maplibregl.FilterSpecification | null | undefined;
+          if (!areFiltersEqual(currentFilter, null)) {
+            map.setFilter(layerId, null);
+          }
           return;
         }
 
         const includeFilters = includedTags.map(tag => ['in', tag, ['get', 'tags']]);
         const excludeFilters = excludedTags.map(tag => ['!', ['in', tag, ['get', 'tags']]]);
         const filterExpression = ['all', ['any', ...includeFilters], ['all', ...excludeFilters]] as unknown[];
-        map.setFilter(layerId, filterExpression as maplibregl.FilterSpecification);
+        const nextFilter = filterExpression as maplibregl.FilterSpecification;
+        const currentFilter = map.getFilter(layerId) as maplibregl.FilterSpecification | null | undefined;
+        if (!areFiltersEqual(currentFilter, nextFilter)) {
+          console.log("updaing filter for layer " + layerId, includedTags, excludedTags);
+          map.setFilter(layerId, nextFilter);
+        }
       });
-
-      console.log(`Tags filter updated: include ${includedTags.join(', ')}, exclude ${excludedTags.join(', ')}`, layerIds);
     };
 
     applyFilters();
