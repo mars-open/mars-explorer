@@ -9,7 +9,7 @@ import { CoordinatesDisplay } from "./CoordinatesDisplay";
 import { SelectedFeaturesPanel, SelectedFeature } from "./SelectedFeaturesPanel";
 import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
-import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, reuseArrayReferenceIfEqual, SourceDefinition } from "./mapHelpers";
+import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
 import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
 import { importGbmZipAsLayer } from "./gbm";
@@ -230,20 +230,19 @@ function App() {
   const selectedLayerConfig = layerConfigurations.find(cfg => cfg.id === selectedLayerConfigId)
     ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
     ?? layerConfigurations[0];
-  const filterableTags = selectedLayerConfig.filterableTags ?? [];
+  const filterableTags = useMemo(
+    () => selectedLayerConfig.filterableTags ?? [],
+    [selectedLayerConfig.filterableTags]
+  );
   const tagFilterConfig = useMemo(
     () => deriveTagFilterConfig(filterableTags, persistedTagFilterConfig),
     [filterableTags, persistedTagFilterConfig]
   );
-  const interactiveLayerIdsRef = useRef<string[]>([]);
   const interactiveLayerIds = useMemo(
     () => {
-      const nextLayerIds = layers
+      return layers
         .filter(layer => selectedLayerConfig.interactive.includes(layer.id))
         .map(layer => layer.id);
-      const stableLayerIds = reuseArrayReferenceIfEqual(nextLayerIds, interactiveLayerIdsRef.current);
-      interactiveLayerIdsRef.current = stableLayerIds;
-      return stableLayerIds;
     },
     [layers, selectedLayerConfig.interactive]
   );
