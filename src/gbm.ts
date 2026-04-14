@@ -89,6 +89,7 @@ interface ImportedGbmLayerResult {
   layerId: string;
   layerDefinition: Layer;
   pointCount: number;
+  pointWithoutGeomCount: number;
 }
 
 export async function importGbmZipAsLayer(
@@ -96,11 +97,10 @@ export async function importGbmZipAsLayer(
   file: File,
 ): Promise<ImportedGbmLayerResult> {
   const features = await parseGbmZipToPoints(file);
-  if (!features.length) throw new Error('No GBM points loaded.');
+  if (!features.length) throw new Error('No GBM points found in file.');
   const featuresWithGeom = features.filter(f => f.geometry !== null) as Feature<Point>[];
   const featuresWithoutGeom = features.filter(f => f.geometry === null);
-  console.log(`Found ${featuresWithGeom.length} GBM points with valid geometry, and ${featuresWithoutGeom.length} without geometry.`);
-  if (!featuresWithGeom.length) throw new Error('No GBM points with valid geometry loaded.');
+  if (!featuresWithGeom.length) throw new Error('No GBM points with valid geometry found in file.');
 
   const layerId = 'gbm-points';
   const layerDefinition: Layer = {
@@ -136,6 +136,7 @@ export async function importGbmZipAsLayer(
   return {
     layerId,
     layerDefinition,
-    pointCount: features.length
+    pointCount: features.length,
+    pointWithoutGeomCount: featuresWithoutGeom.length
   };
 }

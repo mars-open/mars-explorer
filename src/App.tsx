@@ -13,6 +13,8 @@ import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, regi
 import { formatHash, parseHashViewState } from "./appHelpers";
 import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
 import { importGbmZipAsLayer } from "./gbm";
+import { AppToastRegion } from "./components/AppToast";
+import { notifyAppToast } from "./components/appToastBus";
 
 
 // constants
@@ -365,7 +367,7 @@ function App() {
 
   const handleGbmZipSelected = useCallback(async (file: File) => {
     if (selectedLayerConfigId !== 'gbm') {
-      console.warn('GBM upload is only available in GBM configuration.');
+      notifyAppToast({ level: 'warning', title: 'GBM upload is only available in GBM mode.', description: 'Switch the configuration to GBM and try again.'});
       return;
     }
 
@@ -375,9 +377,10 @@ function App() {
     try {
       const imported = await importGbmZipAsLayer(map, file);
       handleLayerAdded(imported.layerDefinition);
-      console.log(`Loaded GBM points layer with ${imported.pointCount} points.`);
+      const msg = (imported.pointWithoutGeomCount == 0  ? `GBM layer loaded with ${imported.pointCount} points.` : `GBM layer loaded with ${imported.pointCount} valid point. Additionally got ${imported.pointWithoutGeomCount} points without geometry.`);
+      notifyAppToast({level: 'success', title: 'GBM layer loaded.', description: msg});
     } catch (error) {
-      console.error('Failed to process GBM ZIP upload', error);
+      notifyAppToast({level: 'error', title: 'Failed to process GBM ZIP upload.', description: String(error)});
     }
   }, [handleLayerAdded, selectedLayerConfigId]);
 
@@ -570,6 +573,7 @@ function App() {
           <AttributionControl position="top-right" compact={true} />
         </Map>
       </main>
+      <AppToastRegion />
     </div>
   );
 }

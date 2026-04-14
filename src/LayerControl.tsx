@@ -7,6 +7,7 @@ import { Checkbox, ColorArea, ColorField, ColorPicker, ColorSlider, ColorThumb, 
 import * as flatgeobuf from 'flatgeobuf';
 import './Checkbox.css';
 import './LayerControl.css';
+import { notifyAppToast } from './components/appToastBus';
 import {
   defaultLayerColor,
   getCircleColorTarget,
@@ -853,7 +854,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
           try {
             const geojson = await loadFlatGeobuf(file);
             if (!geojson.features.length) {
-              console.warn('FlatGeobuf file contains no features.');
+              notifyAppToast({ level: 'warning', title: 'FlatGeobuf file contains no features.'});
               return;
             }
             const layerType = detectLayerType(geojson);
@@ -868,8 +869,9 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
             const newLayerColor = defaultLayerColor(layerType);
             registerLayerAsync(map, { id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor });
             onAddLayer({ id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor, removable: true });
+            notifyAppToast({level: 'success', title: 'Layer added from FlatGeobuf.', description: `${geojson.features.length} features loaded.`});
           } catch (error) {
-            console.error('Failed to load FlatGeobuf file', error);
+            notifyAppToast({level: 'error', title: 'Failed to load FlatGeobuf file.', description: String(error)});
           }
         }}
       />
