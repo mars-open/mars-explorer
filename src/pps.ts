@@ -19,6 +19,7 @@ export interface EdgeProfilePoint {
   xMeters: number;
   yValue: number;
   yKey: string;
+  yValuesByKey: Record<string, number>;
   ppId: string;
   edgeLngLat: [number, number];
 }
@@ -49,6 +50,25 @@ function findFirstNumericProperty(
   return null;
 }
 
+function collectNumericProperties(
+  properties: GeoJSON.GeoJsonProperties | null | undefined,
+  excludedKeys: string[] = []
+): Record<string, number> {
+  if (!properties) return {};
+
+  const excluded = new Set(excludedKeys);
+  const collected: Record<string, number> = {};
+
+  for (const [key, rawValue] of Object.entries(properties)) {
+    if (excluded.has(key)) continue;
+    const parsed = parseNumericValue(rawValue);
+    if (parsed === null) continue;
+    collected[key] = parsed;
+  }
+
+  return collected;
+}
+
 export function buildEdgeProfileFromPpsMatches(
   matches: MapGeoJSONFeature[]
 ): EdgeProfilePoint[] {
@@ -61,6 +81,7 @@ export function buildEdgeProfileFromPpsMatches(
     const properties = match.properties as GeoJSON.GeoJsonProperties | null | undefined;
     const xRaw = properties?.positoin ?? properties?.position;
     const xValue = parseNumericValue(xRaw) ?? 0;
+    const yValuesByKey = collectNumericProperties(properties, ["positoin", "position"]);
     const numericProperty = findFirstNumericProperty(properties, ["positoin", "position"])
       ?? { key: "missing->0", value: 0 };
     const point = match.geometry.coordinates as [number, number];
@@ -69,6 +90,7 @@ export function buildEdgeProfileFromPpsMatches(
       xMeters: xValue,
       yValue: numericProperty.value,
       yKey: numericProperty.key,
+      yValuesByKey,
       ppId: String(match.id ?? match.properties?.token ?? ""),
       edgeLngLat: [point[0], point[1]]
     });
@@ -114,27 +136,6 @@ function getTileCoordsForBufferedEdge(
 
 function toUint8Array(data: ArrayBuffer | Uint8Array): Uint8Array {
   return data instanceof Uint8Array ? data : new Uint8Array(data);
-}
-
-function buildPpsFeatureDedupeKey(
-  tile: { z: number; x: number; y: number },
-  featureIndex: number,
-  geometry: GeoJSON.Geometry,
-  properties: GeoJSON.GeoJsonProperties | null | undefined,
-  candidateId: string | number | undefined
-): string {
-  if (geometry.type !== "Point") {
-    return `tile:${tile.z}/${tile.x}/${tile.y}:${featureIndex}`;
-  }
-
-  const [lng, lat] = geometry.coordinates as [number, number];
-  const roundedLng = Number.isFinite(lng) ? lng.toFixed(7) : "nan";
-  const roundedLat = Number.isFinite(lat) ? lat.toFixed(7) : "nan";
-  const position = properties?.positoin ?? properties?.position ?? "";
-  const edge = properties?.uuid_edge ?? "";
-  const idPart = candidateId === undefined || candidateId === null ? "no-id" : String(candidateId);
-
-  return `id:${idPart}|edge:${String(edge)}|pt:${roundedLng},${roundedLat}|pos:${String(position)}`;
 }
 
 let ppsPmtilesProtocol: pmtiles.Protocol | null = null;

@@ -90,6 +90,7 @@ const defaultLayerConfigId = 'ch';
 const layerConfigQueryParam = 'cfg';
 const layerColorsStorageKey = 'mars-explorer.layer-colors.v1';
 const tagsFilterStorageKey = 'mars-explorer.tags-filter-state.v1';
+const edgeProfileYPropertyStorageKey = 'mars-explorer.edge-profile-y-property.v1';
 
 type TagFilterMode = 'include' | 'exclude';
 type TagFilterEntry = { selected: boolean; mode: TagFilterMode };
@@ -139,6 +140,21 @@ const readPersistedTagFilterConfig = (): TagFilterConfig => {
 const writePersistedTagFilterConfig = (tagConfig: TagFilterConfig) => {
   if (typeof window === 'undefined') return;
   window.localStorage.setItem(tagsFilterStorageKey, JSON.stringify(tagConfig));
+};
+
+const readPersistedEdgeProfileYProperty = (): string => {
+  if (typeof window === 'undefined') return '';
+
+  const raw = window.localStorage.getItem(edgeProfileYPropertyStorageKey);
+  if (!raw) return '';
+  return raw.trim();
+};
+
+const writePersistedEdgeProfileYProperty = (yProperty: string) => {
+  if (typeof window === 'undefined') return;
+  const trimmed = yProperty.trim();
+  if (!trimmed) return;
+  window.localStorage.setItem(edgeProfileYPropertyStorageKey, trimmed);
 };
 
 const deriveTagFilterConfig = (possibleTags: string[], persistedConfig: TagFilterConfig): TagFilterConfig =>
@@ -214,6 +230,7 @@ function App() {
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeature[]>([]);
   const [edgeProfilePoints, setEdgeProfilePoints] = useState<EdgeProfilePoint[]>([]);
   const [edgeProfileTitle, setEdgeProfileTitle] = useState<string>("");
+  const [edgeProfileYProperty, setEdgeProfileYProperty] = useState<string>(() => readPersistedEdgeProfileYProperty());
   const [hoveredProfilePoint, setHoveredProfilePoint] = useState<EdgeProfilePoint | null>(null);
   const [expandedFeature, setExpandedFeature] = useState<SelectedFeature | null>(null);
   const [hoveredFeature, setHoveredFeature] = useState<MapGeoJSONFeature|null>();
@@ -283,6 +300,10 @@ function App() {
   useEffect(() => {
     writePersistedTagFilterConfig(persistedTagFilterConfig);
   }, [persistedTagFilterConfig]);
+
+  useEffect(() => {
+    writePersistedEdgeProfileYProperty(edgeProfileYProperty);
+  }, [edgeProfileYProperty]);
 
   const handleLayerConfigChange = useCallback((configId: string) => {
     applyLayerConfig(configId, mapRef.current?.getMap() ?? null);
@@ -414,11 +435,27 @@ function App() {
     });
   }, []);
 
-  const edgeProfileYKeys = useMemo(
-    () => Array.from(new Set(edgeProfilePoints.map(point => point.yKey))),
+  const edgeProfileYKeys = useMemo(() =>
+    Array.from(
+      edgeProfilePoints.reduce((acc, point) => {
+        Object.keys(point.yValuesByKey).forEach((key) => acc.add(key));
+        if (point.yKey) acc.add(point.yKey);
+        return acc;
+      }, new Set<string>())
+    ),
     [edgeProfilePoints]
   );
-  const edgeProfileYLabel = edgeProfileYKeys.length === 1 ? edgeProfileYKeys[0] : 'first numeric property';
+
+  useEffect(() => {
+    if (edgeProfileYKeys.length === 0) return;
+
+    if (edgeProfileYProperty && edgeProfileYKeys.includes(edgeProfileYProperty)) {
+      return;
+    }
+
+    setEdgeProfileYProperty(edgeProfileYKeys[0]);
+  }, [edgeProfileYKeys, edgeProfileYProperty]);
+
   const handleCloseEdgeProfile = useCallback(() => {
     setEdgeProfilePoints([]);
     setEdgeProfileTitle('');
@@ -632,7 +669,9 @@ function App() {
             <EdgeProfileChart
               points={edgeProfilePoints}
               title={edgeProfileTitle}
-              yLabel={edgeProfileYLabel}
+              yPropertyOptions={edgeProfileYKeys}
+              selectedYProperty={edgeProfileYProperty}
+              onChangeYProperty={setEdgeProfileYProperty}
               onClose={handleCloseEdgeProfile}
               onHoverPoint={setHoveredProfilePoint}
               onClearHover={() => setHoveredProfilePoint(null)}
