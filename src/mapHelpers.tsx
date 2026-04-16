@@ -190,6 +190,7 @@ export function registerProtocols(ppsZoomLevels: number[], ppsZoomLevelMinOverri
   const oldError = console.error;
   console.error = (...args) => {
     if (args[0].message == 'PPS Tile overzoom' || args[0].message == 'PPS Tile not found') return;
+    console.log(args)
     oldError.apply(console, args);
   };
 }

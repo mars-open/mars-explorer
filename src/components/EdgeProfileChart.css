@@ -1,0 +1,59 @@
+.edge-profile-chart-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.edge-profile-chart-body {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px 10px;
+  box-sizing: border-box;
+}
+
+.edge-profile-plot,
+.edge-profile-plot .plot-container,
+.edge-profile-plot .svg-container {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.edge-profile-chart-header {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.edge-profile-chart-title {
+  height: 30px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: #f2efefff;
+  border-top-left-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.edge-profile-chart-close-button {
+  width: 30px;
+  height: 30px;
+  line-height: 28px;
+  padding: 0;
+  background: #ffffff;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-top: 0 !important;
+  border-bottom: 1px solid #f2efefff !important;
+  box-shadow: none !important;
+}
+
+.edge-profile-chart-close-button:hover {
+  background: #f2efefff;
+}

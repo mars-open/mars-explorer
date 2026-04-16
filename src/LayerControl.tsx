@@ -854,7 +854,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
           try {
             const geojson = await loadFlatGeobuf(file);
             if (!geojson.features.length) {
-              notifyAppToast({ level: 'warning', title: 'FlatGeobuf file contains no features.'});
+              notifyAppToast({level: 'warning', title: 'FlatGeobuf file contains no features.'});
               return;
             }
             const layerType = detectLayerType(geojson);
@@ -871,7 +871,7 @@ function LayerControlWrapper({layers, map, onAddLayer, onRemoveLayer, onLayerCol
             onAddLayer({ id: layerId, name: file.name, type: layerType, source: layerId, color: newLayerColor, removable: true });
             notifyAppToast({level: 'success', title: 'Layer added from FlatGeobuf.', description: `${geojson.features.length} features loaded.`});
           } catch (error) {
-            notifyAppToast({level: 'error', title: 'Failed to load FlatGeobuf file.', description: String(error)});
+            notifyAppToast({level: 'error', title: 'Failed to load FlatGeobuf file.', description: error instanceof Error ? error : new Error(String(error))});
           }
         }}
       />

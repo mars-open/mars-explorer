@@ -12,19 +12,23 @@
   },
   "dependencies": {
     "@mapbox/mapbox-gl-draw": "^1.5.1",
+    "@mapbox/tile-cover": "^3.0.2",
     "@mapbox/vector-tile": "^2.0.4",
     "@turf/simplify": "^7.3.2",
+    "@types/plotly.js": "^3.0.10",
     "flatgeobuf": "^4.4.0",
     "geojson-vt": "^4.0.2",
     "jszip": "^3.10.1",
     "maplibre-gl": "^5.0.0",
     "pako": "^2.1.0",
     "pbf": "^4.0.1",
+    "plotly.js-dist-min": "^3.5.0",
     "pmtiles": "^4.3.2",
     "react": "^19.0.0",
     "react-aria-components": "^1.16.0",
     "react-dom": "^19.0.0",
     "react-map-gl": "^8.1.0",
+    "react-plotly.js": "^2.6.0",
     "vt-pbf": "^3.1.3"
   },
   "devDependencies": {

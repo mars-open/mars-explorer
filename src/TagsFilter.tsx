@@ -110,7 +110,7 @@ function TagsFilterWrapper({layerIds, possibleTags, map, tagConfig, onToggleTag,
         const nextFilter = filterExpression as maplibregl.FilterSpecification;
         const currentFilter = map.getFilter(layerId) as maplibregl.FilterSpecification | null | undefined;
         if (!areFiltersEqual(currentFilter, nextFilter)) {
-          console.log("updaing filter for layer " + layerId, includedTags, excludedTags);
+          console.log("updating filter for layer " + layerId, includedTags, excludedTags);
           map.setFilter(layerId, nextFilter);
         }
       });

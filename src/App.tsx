@@ -1,7 +1,7 @@
-import { AttributionControl, Map, MapGeoJSONFeature, MapRef, NavigationControl } from "react-map-gl/maplibre";
+import { AttributionControl, Map, MapGeoJSONFeature, MapRef, Marker, NavigationControl } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./App.css";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppBar } from "./AppBar";
 import { LayerControl } from "./LayerControl";
 import { TagsFilter } from "./TagsFilter";
@@ -15,6 +15,7 @@ import { LayerColorOverride, LayerConfiguration } from "./types/layerConfigurati
 import { importGbmZipAsLayer } from "./gbm";
 import { AppToastRegion } from "./components/AppToast";
 import { notifyAppToast } from "./components/appToastBus";
+import { buildEdgeProfileFromPpsMatches, EdgeProfilePoint, queryPpsAlongEdgeFromPmtiles as queryPpsForEdgeFromPmtiles } from "./pps";
 
 
 // constants
@@ -89,7 +90,6 @@ const defaultLayerConfigId = 'ch';
 const layerConfigQueryParam = 'cfg';
 const layerColorsStorageKey = 'mars-explorer.layer-colors.v1';
 const tagsFilterStorageKey = 'mars-explorer.tags-filter-state.v1';
-const edgePpsSelectionToleranceMeters = 0.25;
 
 type TagFilterMode = 'include' | 'exclude';
 type TagFilterEntry = { selected: boolean; mode: TagFilterMode };
@@ -201,76 +201,7 @@ const formatUrlForLayerConfig = (configId: string) => {
   url.searchParams.set(layerConfigQueryParam, configId);
   return `${url.pathname}${url.search}${url.hash}`;
 };
-
-function projectLngLatToMeters([lng, lat]: [number, number], refLatRad: number): { x: number; y: number } {
-  const metersPerDegLat = 111132;
-  const metersPerDegLng = 111320 * Math.cos(refLatRad);
-  return {
-    x: lng * metersPerDegLng,
-    y: lat * metersPerDegLat
-  };
-}
-
-function distancePointToSegmentMeters(
-  point: [number, number],
-  segmentStart: [number, number],
-  segmentEnd: [number, number]
-): number {
-  const refLatRad = (point[1] * Math.PI) / 180;
-  const p = projectLngLatToMeters(point, refLatRad);
-  const a = projectLngLatToMeters(segmentStart, refLatRad);
-  const b = projectLngLatToMeters(segmentEnd, refLatRad);
-  const abX = b.x - a.x;
-  const abY = b.y - a.y;
-  const apX = p.x - a.x;
-  const apY = p.y - a.y;
-  const abSq = abX * abX + abY * abY;
-
-  if (abSq === 0) {
-    return Math.hypot(apX, apY);
-  }
-
-  const t = Math.max(0, Math.min(1, (apX * abX + apY * abY) / abSq));
-  const closestX = a.x + t * abX;
-  const closestY = a.y + t * abY;
-  return Math.hypot(p.x - closestX, p.y - closestY);
-}
-
-function isPointOnLineWithinTolerance(
-  point: [number, number],
-  lineCoordinates: [number, number][],
-  toleranceMeters: number
-): boolean {
-  if (lineCoordinates.length < 2) return false;
-
-  for (let i = 0; i < lineCoordinates.length - 1; i += 1) {
-    if (distancePointToSegmentMeters(point, lineCoordinates[i], lineCoordinates[i + 1]) <= toleranceMeters) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function isPointOnAnyLineWithinTolerance(
-  point: [number, number],
-  lines: [number, number][][],
-  toleranceMeters: number
-): boolean {
-  return lines.some(line => isPointOnLineWithinTolerance(point, line, toleranceMeters));
-}
-
-function getLinePartsFromFeatureGeometry(geometry: GeoJSON.Geometry | null | undefined): [number, number][][] {
-  if (!geometry) return [];
-  if (geometry.type === 'LineString') {
-    return [geometry.coordinates as [number, number][]];
-  }
-  if (geometry.type === 'MultiLineString') {
-    return geometry.coordinates as [number, number][][];
-  }
-  return [];
-}
-// "line-width": 1, "line-blur": 0.5, "line-opacity": 0.7
+const EdgeProfileChart = lazy(() => import("./components/EdgeProfileChart"));
 
 
 function App() {
@@ -281,6 +212,9 @@ function App() {
     ?? layerConfigurations[0];
 
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeature[]>([]);
+  const [edgeProfilePoints, setEdgeProfilePoints] = useState<EdgeProfilePoint[]>([]);
+  const [edgeProfileTitle, setEdgeProfileTitle] = useState<string>("");
+  const [hoveredProfilePoint, setHoveredProfilePoint] = useState<EdgeProfilePoint | null>(null);
   const [expandedFeature, setExpandedFeature] = useState<SelectedFeature | null>(null);
   const [hoveredFeature, setHoveredFeature] = useState<MapGeoJSONFeature|null>();
   const [boxSelectActive, setBoxSelectActive] = useState(false);
@@ -436,7 +370,7 @@ function App() {
 
   const handleGbmZipSelected = useCallback(async (file: File) => {
     if (selectedLayerConfigId !== 'gbm') {
-      notifyAppToast({ level: 'warning', title: 'GBM upload is only available in GBM mode.', description: 'Switch the configuration to GBM and try again.'});
+      notifyAppToast({level: 'warning', title: 'GBM upload is only available in GBM mode.', description: 'Switch the configuration to GBM and try again.'});
       return;
     }
 
@@ -449,72 +383,46 @@ function App() {
       const msg = (imported.pointWithoutGeomCount == 0  ? `GBM layer loaded with ${imported.pointCount} points.` : `GBM layer loaded with ${imported.pointCount} valid point. Additionally got ${imported.pointWithoutGeomCount} points without geometry.`);
       notifyAppToast({level: 'success', title: 'GBM layer loaded.', description: msg});
     } catch (error) {
-      notifyAppToast({level: 'error', title: 'Failed to process GBM ZIP upload.', description: String(error)});
+      notifyAppToast({level: 'error', title: 'Failed to process GBM ZIP upload.', description: error instanceof Error ? error : new Error(String(error))});
     }
   }, [handleLayerAdded, selectedLayerConfigId]);
 
   const handleSelectPpsAlongEdge = useCallback((edgeFeature: SelectedFeature) => {
-    const map = mapRef.current?.getMap();
-    if (!map) return;
+    notifyAppToast({level: 'info', title: 'Searching pps on edge.'});
 
-    const lineParts = getLinePartsFromFeatureGeometry(edgeFeature.feature.geometry);
-    if (lineParts.length === 0) {
-      notifyAppToast({ level: 'warning', title: 'Selected feature is not a line edge.' });
-      return;
-    }
+    const runDirectQuery = async () => {
+      const map = mapRef.current?.getMap();
+      if (!map) throw new Error("Map not ready");
 
-    const ppsFeatures = map.querySourceFeatures('pps', { sourceLayer: 'pps' });
-    const matchedById = new globalThis.Map<string | number, MapGeoJSONFeature>();
-
-    ppsFeatures.forEach((ppsFeature) => {
-      if (ppsFeature.geometry.type !== 'Point') return;
-
-      const pointCoordinates = ppsFeature.geometry.coordinates as [number, number];
-      if (!isPointOnAnyLineWithinTolerance(pointCoordinates, lineParts, edgePpsSelectionToleranceMeters)) {
-        return;
+      const edgeUuid = edgeFeature.feature.properties?.uuid_edge;
+      if (edgeUuid === undefined || edgeUuid === null) {
+        throw new Error("Selected edge has no uuid_edge property");
       }
 
-      const candidateId = ppsFeature.id ?? (typeof ppsFeature.properties?.token === 'string' ? ppsFeature.properties.token : undefined);
-      if (candidateId === undefined || candidateId === null) return;
+      const result = await queryPpsForEdgeFromPmtiles(edgeFeature.feature.geometry, String(edgeUuid));
+      const profilePoints = buildEdgeProfileFromPpsMatches(result);
+      setEdgeProfilePoints(profilePoints);
+      setEdgeProfileTitle(`Edge ${String(edgeFeature.feature.id ?? '')}`.trim());
+      setHoveredProfilePoint(null);
+      notifyAppToast({level: 'success', title: 'Edge profile created.', description: `Plotted ${profilePoints.length} points from ${result.length} matched pps.`});
+    };
 
-      const featureWithLayer = {
-        ...ppsFeature,
-        layer: {
-          id: 'pps'
-        }
-      } as MapGeoJSONFeature;
-
-      matchedById.set(candidateId, featureWithLayer);
+    void runDirectQuery().catch((error) => {
+      setEdgeProfilePoints([]);
+      setHoveredProfilePoint(null);
+      notifyAppToast({level: 'error', title: 'Querying Pps for edge failed.', description: error});
     });
+  }, []);
 
-    if (matchedById.size === 0) {
-      notifyAppToast({
-        level: 'info',
-        title: 'No pps found on edge.',
-        description: 'No loaded pps features were within 25 cm of the selected edge.'
-      });
-      return;
-    }
-
-    setSelectedFeatures((prevSelected) => {
-      const dedupedByLayerAndId = new globalThis.Map<string, SelectedFeature>();
-      prevSelected.forEach((sf) => {
-        dedupedByLayerAndId.set(`${sf.layerName}:${String(sf.feature.id)}`, sf);
-      });
-
-      matchedById.forEach((feature) => {
-        const sf = new SelectedFeature(feature, edgeFeature.lngLat);
-        dedupedByLayerAndId.set(`pps:${String(sf.feature.id)}`, sf);
-      });
-
-      return Array.from(dedupedByLayerAndId.values());
-    });
-
-    notifyAppToast({
-      level: 'success',
-      title: 'pps selected on edge.',
-      description: `Added ${matchedById.size} pps features within 25 cm of the selected edge.`
-    });
+  const edgeProfileYKeys = useMemo(
+    () => Array.from(new Set(edgeProfilePoints.map(point => point.yKey))),
+    [edgeProfilePoints]
+  );
+  const edgeProfileYLabel = edgeProfileYKeys.length === 1 ? edgeProfileYKeys[0] : 'first numeric property';
+  const handleCloseEdgeProfile = useCallback(() => {
+    setEdgeProfilePoints([]);
+    setEdgeProfileTitle('');
+    setHoveredProfilePoint(null);
   }, []);
 
   // Helper function to get feature identifier for setFeatureState/removeFeatureState
@@ -585,7 +493,6 @@ function App() {
 
   const initMap = useCallback((map: maplibregl.Map) => {
     console.log("initMap");
-
     registerProtocols(ppsZoomLevels, ppsZoomLevelMin);
     collapseAttributionControl(map);
     initialSourceDef.forEach(source => registerSource(map, source));
@@ -708,8 +615,31 @@ function App() {
           />
           <CoordinatesDisplay />
           <AttributionControl position="top-right" compact={true} />
+          {hoveredProfilePoint && (
+            <Marker
+              longitude={hoveredProfilePoint.edgeLngLat[0]}
+              latitude={hoveredProfilePoint.edgeLngLat[1]}
+              anchor="center"
+            >
+              <div className="edge-profile-hover-marker" title={`s=${hoveredProfilePoint.xMeters.toFixed(2)} m`} />
+            </Marker>
+          )}
         </Map>
       </main>
+      {edgeProfilePoints.length > 0 && (
+        <section className="edge-profile-panel">
+          <Suspense fallback={<div style={{ padding: 12, fontSize: 12, color: '#475569' }}>Loading chart...</div>}>
+            <EdgeProfileChart
+              points={edgeProfilePoints}
+              title={edgeProfileTitle}
+              yLabel={edgeProfileYLabel}
+              onClose={handleCloseEdgeProfile}
+              onHoverPoint={setHoveredProfilePoint}
+              onClearHover={() => setHoveredProfilePoint(null)}
+            />
+          </Suspense>
+        </section>
+      )}
       <AppToastRegion />
     </div>
   );
