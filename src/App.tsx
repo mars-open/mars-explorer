@@ -446,14 +446,11 @@ function App() {
     [edgeProfilePoints]
   );
 
-  useEffect(() => {
-    if (edgeProfileYKeys.length === 0) return;
-
+  const activeEdgeProfileYProperty = useMemo(() => {
     if (edgeProfileYProperty && edgeProfileYKeys.includes(edgeProfileYProperty)) {
-      return;
+      return edgeProfileYProperty;
     }
-
-    setEdgeProfileYProperty(edgeProfileYKeys[0]);
+    return edgeProfileYKeys[0] ?? '';
   }, [edgeProfileYKeys, edgeProfileYProperty]);
 
   const handleCloseEdgeProfile = useCallback(() => {
@@ -670,7 +667,7 @@ function App() {
               points={edgeProfilePoints}
               title={edgeProfileTitle}
               yPropertyOptions={edgeProfileYKeys}
-              selectedYProperty={edgeProfileYProperty}
+              selectedYProperty={activeEdgeProfileYProperty}
               onChangeYProperty={setEdgeProfileYProperty}
               onClose={handleCloseEdgeProfile}
               onHoverPoint={setHoveredProfilePoint}
