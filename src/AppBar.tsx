@@ -56,19 +56,21 @@ export function AppBar({
           </Button>
           <Popover className="app-bar__select-popover" placement="bottom end" offset={6}>
             <ListBox className="app-bar__select-listbox">
-              {layerConfigurations.map(config => (
-                <ListBoxItem
-                  key={config.id}
-                  id={config.id}
-                  textValue={config.label}
-                  className="app-bar__select-option"
-                >
-                  <LayerConfigOptionLabel
-                    label={config.label}
-                    description={config.description}
-                  />
-                </ListBoxItem>
-              ))}
+              {layerConfigurations
+                .filter(config => config.id !== 'de')
+                .map(config => (
+                  <ListBoxItem
+                    key={config.id}
+                    id={config.id}
+                    textValue={config.label}
+                    className="app-bar__select-option"
+                  >
+                    <LayerConfigOptionLabel
+                      label={config.label}
+                      description={config.description}
+                    />
+                  </ListBoxItem>
+                ))}
             </ListBox>
           </Popover>
         </Select>
