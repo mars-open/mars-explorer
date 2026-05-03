@@ -11,7 +11,7 @@ import { BoxSelect } from "./BoxSelect";
 import maplibregl from "maplibre-gl";
 import { collapseAttributionControl, Layer, LayerColor, registerLayerAsync, registerProtocols, registerSource, SourceDefinition } from "./mapHelpers";
 import { formatHash, parseHashViewState } from "./appHelpers";
-import { LayerColorOverride, LayerConfiguration } from "./types/layerConfiguration";
+import { LayerColorOverride, LayerConfiguration, SourceOverride } from "./types/layerConfiguration";
 import { importGbmZipAsLayer } from "./gbm";
 import { AppToastRegion } from "./components/AppToast";
 import { notifyAppToast } from "./components/appToastBus";
@@ -23,25 +23,13 @@ const ppsZoomLevels = [15, 18, 21].sort((a,b) => b - a).reverse();
 const ppsZoomLevelMin = 14;
 const edgesZoomLevelMin = 10;
 
-const defaultViewState = {
-  latitude: 46.95061,
-  longitude: 7.43885,
-  zoom: 15,
-  pitch: 0,
-  bearing: 0
-};
-
-
 // Define background layer
-// traffimage, swisstopo or custom... 
-//const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
-//const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
 //const mapStyle = "https://tiles.openfreemap.org/styles/positron"  // or /liberty, /bright
-const mapStyle = "swisstopo_lightbasemap_v1190_reduced.json"
+const defaultMapStyle = 'https://tiles.openfreemap.org/styles/positron'
 // Editor: https://maplibre.org/maputnik
 
 // Define sources and layers
-const initialSourceDef: SourceDefinition[] = [
+const baseSourceDef: SourceDefinition[] = [
   {id: 'lines-fgb', type: 'fgb', data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-osm-line.fgb', promoteId: 'uuid_line'},
   {id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
   //{id: 'pps', type: 'vector', tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/ch-pp-raw.pmtiles/{z}/{x}/{y}'], promoteId: 'token', minzoom: ppsZoomLevelMin},
@@ -68,9 +56,58 @@ const layerConfigurations: LayerConfiguration[] = (() => {
       id: 'ch',
       label: 'Switzerland TLM3D',
       description: 'Positionpoints of Switzerland, based on Swisstopo TLM3D data.',
+      // traffimage, swisstopo or custom... 
+      //const mapStyle = "https://maps.geops.io/styles/base_bright_v2_ch.sbb.netzkarte/style.json?key=5cc87b12d7c5370001c1d655352830d2fef24680ae3a1cda54418cb8"
+      //const mapStyle = "https://vectortiles.geo.admin.ch/styles/ch.swisstopo.lightbasemap.vt/style.json"
+      mapStyle: "swisstopo_lightbasemap_v1190_reduced.json", // customized swisstopo using maputnik
+      defaultViewState: {
+        //latitude: 46.95061, longitude: 7.43885, // Bern
+        latitude: 47.35074, longitude: 7.90938, // Olten
+        zoom: 14.01,
+        pitch: 0,
+        bearing: 0
+      },
       layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']],
       interactive: ['pps', 'edges', 'nodes', 'lines'],
       filterableTags: ['Normalspur', 'Schmalspur', 'Tram']
+    },
+    {
+      id: 'de',
+      label: 'Germany ORM',
+      description: 'Positionpoints of Germany, based on OpenRailwayMap data.',
+      defaultViewState: {
+        latitude: 51.1633,
+        longitude: 10.4477,
+        zoom: 10,
+        pitch: 0,
+        bearing: 0
+      },
+      layers: [layerMap['pps'],layerMap['edges'], layerMap['nodes'], layerMap['lines']],
+      interactive: ['pps', 'edges', 'nodes', 'lines'],
+      filterableTags: ['Normalspur', 'Schmalspur', 'Tram'],
+      sourceOverrides: {
+        'lines-fgb': {
+          type: 'fgb',
+          data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/de-osm-line.fgb',
+          promoteId: 'uuid_line'
+        },
+        pps: {
+          type: 'vector',
+          tiles: ['pps://https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/de-pp.pmtiles/{z}/{x}/{y}'],
+          promoteId: 'token',
+          minzoom: ppsZoomLevelMin
+        },
+        'edges-fgb': {
+          type: 'fgb',
+          data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/de-edges.fgb',
+          promoteId: 'uuid_edge'
+        },
+        'nodes-fgb': {
+          type: 'fgb',
+          data: 'https://zzeekk-test.s3.eu-central-1.amazonaws.com/mars-open/geometries/de-nodes.fgb',
+          promoteId: 'uuid_node'
+        }
+      }
     },
     {
       id: 'gbm',
@@ -204,6 +241,19 @@ const applyColorOverride = (layer: Layer, override?: LayerColorOverride): Layer 
 const cloneLayers = (sourceLayers: Layer[], colorOverrides?: LayerConfiguration['colorOverrides']) =>
   sourceLayers.map(layer => applyColorOverride(layer, colorOverrides?.[layer.id]));
 
+const resolveSourceDefinitions = (
+  sourceDefinitions: SourceDefinition[],
+  sourceOverrides?: Record<string, SourceOverride>
+): SourceDefinition[] =>
+  sourceDefinitions.map(source => {
+    const override = sourceOverrides?.[source.id];
+    if (!override || override.type !== source.type) return source;
+    return {
+      ...source,
+      ...override
+    } as SourceDefinition;
+  });
+
 const parseLayerConfigIdFromQuery = (configs: LayerConfiguration[]) => {
   const queryParams = new URLSearchParams(window.location.search);
   const candidate = queryParams.get(layerConfigQueryParam);
@@ -211,6 +261,11 @@ const parseLayerConfigIdFromQuery = (configs: LayerConfiguration[]) => {
   const matchingConfig = configs.find(config => config.id === candidate);
   return matchingConfig?.id ?? defaultLayerConfigId;
 };
+
+const resolveLayerConfig = (configId: string): LayerConfiguration =>
+  layerConfigurations.find(cfg => cfg.id === configId)
+    ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
+    ?? layerConfigurations[0];
 
 const formatUrlForLayerConfig = (configId: string) => {
   const url = new URL(window.location.href);
@@ -223,9 +278,7 @@ const EdgeProfileChart = lazy(() => import("./components/EdgeProfileChart"));
 function App() {
 
   const initialLayerConfigId = parseLayerConfigIdFromQuery(layerConfigurations);
-  const initialLayerConfig = layerConfigurations.find(cfg => cfg.id === initialLayerConfigId)
-    ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
-    ?? layerConfigurations[0];
+  const initialLayerConfig = resolveLayerConfig(initialLayerConfigId);
 
   const [selectedFeatures, setSelectedFeatures] = useState<SelectedFeature[]>([]);
   const [edgeProfilePoints, setEdgeProfilePoints] = useState<EdgeProfilePoint[]>([]);
@@ -248,9 +301,8 @@ function App() {
     )
   );
   const [selectedLayerConfigId, setSelectedLayerConfigId] = useState(initialLayerConfig.id);
-  const selectedLayerConfig = layerConfigurations.find(cfg => cfg.id === selectedLayerConfigId)
-    ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
-    ?? layerConfigurations[0];
+  const selectedLayerConfig = resolveLayerConfig(selectedLayerConfigId);
+  const selectedMapStyle = selectedLayerConfig.mapStyle ?? defaultMapStyle;
   const filterableTags = useMemo(
     () => selectedLayerConfig.filterableTags ?? [],
     [selectedLayerConfig.filterableTags]
@@ -268,11 +320,10 @@ function App() {
     [layers, selectedLayerConfig.interactive]
   );
   const prevLayerIdsRef = useRef<string[]>([]);
+  const prevSourceIdsRef = useRef<string[]>([]);
 
   const applyLayerConfig = useCallback((configId: string, map?: maplibregl.Map | null) => {
-    const config = layerConfigurations.find(cfg => cfg.id === configId)
-      ?? layerConfigurations.find(cfg => cfg.id === defaultLayerConfigId)
-      ?? layerConfigurations[0];
+    const config = resolveLayerConfig(configId);
     const clonedLayers = applyPersistedLayerColors(
       cloneLayers(config.layers, config.colorOverrides),
       persistedLayerColors
@@ -288,6 +339,16 @@ function App() {
         map.removeLayer(layerId);
       }
     });
+
+    const sourceDefinitions = resolveSourceDefinitions(baseSourceDef, config.sourceOverrides);
+    prevSourceIdsRef.current.forEach(sourceId => {
+      if (map.getSource(sourceId)) {
+        map.removeSource(sourceId);
+      }
+    });
+
+    sourceDefinitions.forEach(source => registerSource(map, source));
+    prevSourceIdsRef.current = sourceDefinitions.map(source => source.id);
 
     clonedLayers.forEach(layer => registerLayerAsync(map, layer));
     prevLayerIdsRef.current = clonedLayers.map(layer => layer.id);
@@ -306,7 +367,18 @@ function App() {
   }, [edgeProfileYProperty]);
 
   const handleLayerConfigChange = useCallback((configId: string) => {
-    applyLayerConfig(configId, mapRef.current?.getMap() ?? null);
+    const map = mapRef.current?.getMap() ?? null;
+    const targetConfig = resolveLayerConfig(configId);
+
+    applyLayerConfig(configId, map);
+    if (!map || !targetConfig.defaultViewState) return;
+
+    map.jumpTo({
+      center: [targetConfig.defaultViewState.longitude, targetConfig.defaultViewState.latitude],
+      zoom: targetConfig.defaultViewState.zoom,
+      pitch: targetConfig.defaultViewState.pitch ?? 0,
+      bearing: targetConfig.defaultViewState.bearing ?? 0
+    });
   }, [applyLayerConfig]);
 
   useEffect(() => {
@@ -529,7 +601,6 @@ function App() {
     console.log("initMap");
     registerProtocols(ppsZoomLevels, ppsZoomLevelMin);
     collapseAttributionControl(map);
-    initialSourceDef.forEach(source => registerSource(map, source));
     applyLayerConfig(selectedLayerConfigId, map);
     setMapReady(true);
   }, [applyLayerConfig, selectedLayerConfigId]);
@@ -559,7 +630,7 @@ function App() {
     updateHashFromMap();
   }, [mapReady]);
 
-  const initialViewState = parseHashViewState() ?? defaultViewState;
+  const initialViewState = parseHashViewState() ?? initialLayerConfig.defaultViewState;
 
   return (
     <div className="app-shell">
@@ -583,9 +654,10 @@ function App() {
       />
       <main className="map-wrapper">
         <Map
+          key={selectedMapStyle}
           ref={mapRef}
           initialViewState={initialViewState}
-          mapStyle={mapStyle}
+          mapStyle={selectedMapStyle}
           minZoom={7}
           interactiveLayerIds={interactiveLayerIds}
           cursor={hoveredFeature ? 'pointer' : 'default'} // Dynamic cursor
